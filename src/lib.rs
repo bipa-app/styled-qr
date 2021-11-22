@@ -1,0 +1,208 @@
+use drawing::draw_qrcode_eye;
+use image::{DynamicImage, GenericImageView, Rgba, RgbaImage};
+use qrcode::types::QrError;
+use thiserror::Error;
+
+mod drawing;
+
+const RGBA_BLACK: Rgba<u8> = Rgba([0, 0, 0, 255]);
+const RGBA_WHITE: Rgba<u8> = Rgba([255, 255, 255, 255]);
+
+#[derive(Debug, Error)]
+pub enum MakeError {
+    #[error("Failed to encode data: {0}")]
+    Encoding(QrError),
+    #[error("Failed to construct codewords: {0}")]
+    Codewords(QrError),
+}
+
+pub fn make<D, I>(data: D, logo: &I) -> Result<DynamicImage, MakeError>
+where
+    D: AsRef<[u8]>,
+    I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>,
+{
+    let ec_level = qrcode::EcLevel::H;
+    let encoded_data =
+        qrcode::bits::encode_auto(data.as_ref(), ec_level).map_err(MakeError::Encoding)?;
+
+    let version = encoded_data.version();
+
+    let (data_codewords, ec_codewords) =
+        qrcode::ec::construct_codewords(&encoded_data.into_bytes(), version, ec_level)
+            .map_err(MakeError::Codewords)?;
+
+    let mut canvas = qrcode::canvas::Canvas::new(version, ec_level);
+    canvas.draw_all_functional_patterns();
+    canvas.draw_data(&*data_codewords, &*ec_codewords);
+    let data_canvas = canvas.apply_best_mask();
+
+    let code_width = version.width() as usize; // code width in modules
+    let module_width = 44; // module width in pixels
+    let quiet_zone = 4; // quiet zone width in modules
+
+    let colors = data_canvas.into_colors();
+
+    // Find eyes positions and dimensions
+    let mut px1 = 0;
+    for x in 0..code_width {
+        if let qrcode::Color::Light = colors[x] {
+            break;
+        }
+
+        px1 = x;
+    }
+
+    let mut px2 = 0;
+    for x in (0..code_width).rev() {
+        if let qrcode::Color::Light = colors[x] {
+            break;
+        }
+
+        px2 = x;
+    }
+
+    let mut py1 = 0;
+    for y in 0..code_width {
+        if let qrcode::Color::Light = colors[y * code_width] {
+            break;
+        }
+
+        py1 = y;
+    }
+
+    let mut py2 = 0;
+    for y in (0..code_width).rev() {
+        if let qrcode::Color::Light = colors[y * code_width] {
+            break;
+        }
+
+        py2 = y;
+    }
+
+    let qrcode_size = (code_width + 2 * quiet_zone) * module_width; // qrcode width in pixels
+    let qrcode_data_size = code_width * module_width; // qrcode data size in pixels
+    let eye_size = (px1 + 1) * module_width; // eye size in pixels
+    let dot_size = module_width / 2 - 4; // dots size in pixels
+
+    let logo_img_size = (((qrcode_data_size * qrcode_data_size - 3 * eye_size * eye_size) * 5 / 100)
+        as f64)
+        .sqrt() as usize; // logo image width in pixels
+    let logo_img_pos = ((code_width + 2 * quiet_zone) * module_width / 2) - logo_img_size / 2; // logo position in pixels
+
+    let resized_logo = image::imageops::resize(
+        logo,
+        logo_img_size as u32,
+        logo_img_size as u32,
+        image::imageops::FilterType::Gaussian,
+    );
+
+    let mut img = RgbaImage::from_pixel(qrcode_size as u32, qrcode_size as u32, RGBA_WHITE);
+
+    // top-left eye
+    draw_qrcode_eye(
+        &mut img,
+        (
+            (quiet_zone * module_width) as i32,
+            (quiet_zone * module_width) as i32,
+        ),
+        (eye_size as u32, eye_size as u32),
+        RGBA_BLACK,
+        RGBA_WHITE,
+    );
+    // top-right eye
+    draw_qrcode_eye(
+        &mut img,
+        (
+            ((px2 + quiet_zone) * module_width) as i32,
+            (quiet_zone * module_width) as i32,
+        ),
+        (eye_size as u32, eye_size as u32),
+        RGBA_BLACK,
+        RGBA_WHITE,
+    );
+    // bottom-left eye
+    draw_qrcode_eye(
+        &mut img,
+        (
+            (quiet_zone * module_width) as i32,
+            ((py2 + quiet_zone) * module_width) as i32,
+        ),
+        (eye_size as u32, eye_size as u32),
+        RGBA_BLACK,
+        RGBA_WHITE,
+    );
+
+    for y in 0..code_width {
+        for x in 0..code_width {
+            let c = colors[y * code_width + x];
+
+            if let qrcode::Color::Dark = c {
+                if !(x <= px1 && y <= py1 || x <= px1 && y >= py2 || x >= px2 && y <= py1) {
+                    let cx = module_width / 2 + (x + quiet_zone) * module_width;
+                    let cy = module_width / 2 + (y + quiet_zone) * module_width;
+
+                    let k = 1;
+
+                    if cx >= (logo_img_pos - k * module_width)
+                        && cx <= (logo_img_pos + logo_img_size + k * module_width)
+                        && cy >= (logo_img_pos - k * module_width)
+                        && cy <= (logo_img_pos + logo_img_size + k * module_width)
+                    {
+                        continue;
+                    }
+
+                    imageproc::drawing::draw_filled_circle_mut(
+                        &mut img,
+                        (cx as i32, cy as i32),
+                        dot_size as i32,
+                        RGBA_BLACK,
+                    );
+                }
+            }
+        }
+    }
+
+    image::imageops::overlay(
+        &mut img,
+        &resized_logo,
+        logo_img_pos as u32,
+        logo_img_pos as u32,
+    );
+
+    Ok(DynamicImage::ImageRgba8(img))
+}
+
+#[cfg(test)]
+mod tests {
+    use image::{DynamicImage, Rgba, RgbaImage};
+
+    #[test]
+    fn it_works() {
+        let logo =
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(512, 512, Rgba([255, 0, 0, 255])));
+
+        let img =
+            super::make(b"12345678abcdefghijklmnopqrstuvwxyz", &logo).expect("qrcode generated");
+        let img_gray = img.into_luma8();
+
+        let mut decoder = quircs::Quirc::default();
+
+        let codes = decoder
+            .identify(
+                img_gray.width() as usize,
+                img_gray.height() as usize,
+                &img_gray,
+            )
+            .collect::<Result<Vec<_>, _>>()
+            .expect("identified code in generated image");
+        assert_eq!(codes.len(), 1);
+
+        let code = codes[0];
+        let decoded_data = code.decode().expect("decoded generated qrcode");
+
+        assert_eq!(
+            std::str::from_utf8(&decoded_data.payload).unwrap(),
+            "12345678abcdefghijklmnopqrstuvwxyz"
+        );
+    }
+}

@@ -1,0 +1,13 @@
+[package]
+name = "qrcoder"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+qrcode = { version = "0.12", default-features = false }
+image = { version = "0.23", default-features = false }
+imageproc = { version = "0.22", default-features = false }
+thiserror = { version = "1.0", default-features = false }
+
+[dev-dependencies]
+quircs = { version = "0.10.0", default-features = false }
