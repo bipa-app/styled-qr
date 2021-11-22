@@ -8,168 +8,204 @@ mod drawing;
 const RGBA_BLACK: Rgba<u8> = Rgba([0, 0, 0, 255]);
 const RGBA_WHITE: Rgba<u8> = Rgba([255, 255, 255, 255]);
 
+pub struct Builder<'a, I> {
+    data: &'a [u8],
+    logo_image: &'a I,
+    module_width: Option<usize>,
+    quiet_zone: Option<usize>,
+    logo_quiet_zone: Option<usize>,
+}
+
 #[derive(Debug, Error)]
-pub enum MakeError {
+pub enum BuildError {
     #[error("Failed to encode data: {0}")]
     Encoding(QrError),
     #[error("Failed to construct codewords: {0}")]
     Codewords(QrError),
 }
 
-pub fn make<D, I>(data: D, logo: &I) -> Result<DynamicImage, MakeError>
-where
-    D: AsRef<[u8]>,
-    I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>,
-{
-    let ec_level = qrcode::EcLevel::H;
-    let encoded_data =
-        qrcode::bits::encode_auto(data.as_ref(), ec_level).map_err(MakeError::Encoding)?;
-
-    let version = encoded_data.version();
-
-    let (data_codewords, ec_codewords) =
-        qrcode::ec::construct_codewords(&encoded_data.into_bytes(), version, ec_level)
-            .map_err(MakeError::Codewords)?;
-
-    let mut canvas = qrcode::canvas::Canvas::new(version, ec_level);
-    canvas.draw_all_functional_patterns();
-    canvas.draw_data(&*data_codewords, &*ec_codewords);
-    let data_canvas = canvas.apply_best_mask();
-
-    let code_width = version.width() as usize; // code width in modules
-    let module_width = 44; // module width in pixels
-    let quiet_zone = 4; // quiet zone width in modules
-
-    let colors = data_canvas.into_colors();
-
-    // Find eyes positions and dimensions
-    let mut px1 = 0;
-    for x in 0..code_width {
-        if let qrcode::Color::Light = colors[x] {
-            break;
+impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Builder<'a, I> {
+    pub fn new(data: &'a [u8], logo_image: &'a I) -> Self {
+        Self {
+            data,
+            logo_image,
+            module_width: None,
+            quiet_zone: None,
+            logo_quiet_zone: None,
         }
-
-        px1 = x;
     }
 
-    let mut px2 = 0;
-    for x in (0..code_width).rev() {
-        if let qrcode::Color::Light = colors[x] {
-            break;
+    pub fn with_module_width(self, module_width: usize) -> Self {
+        Self {
+            module_width: Some(module_width),
+            ..self
         }
-
-        px2 = x;
     }
 
-    let mut py1 = 0;
-    for y in 0..code_width {
-        if let qrcode::Color::Light = colors[y * code_width] {
-            break;
+    pub fn with_quiet_zone(self, quiet_zone: usize) -> Self {
+        Self {
+            quiet_zone: Some(quiet_zone),
+            ..self
         }
-
-        py1 = y;
     }
 
-    let mut py2 = 0;
-    for y in (0..code_width).rev() {
-        if let qrcode::Color::Light = colors[y * code_width] {
-            break;
+    pub fn with_logo_quiet_zone(self, logo_quiet_zone: usize) -> Self {
+        Self {
+            logo_quiet_zone: Some(logo_quiet_zone),
+            ..self
         }
-
-        py2 = y;
     }
 
-    let qrcode_size = (code_width + 2 * quiet_zone) * module_width; // qrcode width in pixels
-    let qrcode_data_size = code_width * module_width; // qrcode data size in pixels
-    let eye_size = (px1 + 1) * module_width; // eye size in pixels
-    let dot_size = module_width / 2 - 4; // dots size in pixels
+    pub fn build(self) -> Result<DynamicImage, BuildError> {
+        let ec_level = qrcode::EcLevel::H;
+        let encoded_data =
+            qrcode::bits::encode_auto(self.data, ec_level).map_err(BuildError::Encoding)?;
 
-    let logo_img_size = (((qrcode_data_size * qrcode_data_size - 3 * eye_size * eye_size) * 5 / 100)
-        as f64)
-        .sqrt() as usize; // logo image width in pixels
-    let logo_img_pos = ((code_width + 2 * quiet_zone) * module_width / 2) - logo_img_size / 2; // logo position in pixels
+        let version = encoded_data.version();
 
-    let resized_logo = image::imageops::resize(
-        logo,
-        logo_img_size as u32,
-        logo_img_size as u32,
-        image::imageops::FilterType::Gaussian,
-    );
+        let (data_codewords, ec_codewords) =
+            qrcode::ec::construct_codewords(&encoded_data.into_bytes(), version, ec_level)
+                .map_err(BuildError::Codewords)?;
 
-    let mut img = RgbaImage::from_pixel(qrcode_size as u32, qrcode_size as u32, RGBA_WHITE);
+        let mut canvas = qrcode::canvas::Canvas::new(version, ec_level);
+        canvas.draw_all_functional_patterns();
+        canvas.draw_data(&*data_codewords, &*ec_codewords);
+        let data_canvas = canvas.apply_best_mask();
 
-    // top-left eye
-    draw_qrcode_eye(
-        &mut img,
-        (
-            (quiet_zone * module_width) as i32,
-            (quiet_zone * module_width) as i32,
-        ),
-        (eye_size as u32, eye_size as u32),
-        RGBA_BLACK,
-        RGBA_WHITE,
-    );
-    // top-right eye
-    draw_qrcode_eye(
-        &mut img,
-        (
-            ((px2 + quiet_zone) * module_width) as i32,
-            (quiet_zone * module_width) as i32,
-        ),
-        (eye_size as u32, eye_size as u32),
-        RGBA_BLACK,
-        RGBA_WHITE,
-    );
-    // bottom-left eye
-    draw_qrcode_eye(
-        &mut img,
-        (
-            (quiet_zone * module_width) as i32,
-            ((py2 + quiet_zone) * module_width) as i32,
-        ),
-        (eye_size as u32, eye_size as u32),
-        RGBA_BLACK,
-        RGBA_WHITE,
-    );
+        let code_width = version.width() as usize; // code width in modules
+        let module_width = self.module_width.unwrap_or(11); // module width in pixels
+        let quiet_zone = self.quiet_zone.unwrap_or(4); // quiet zone width in modules
 
-    for y in 0..code_width {
+        let colors = data_canvas.into_colors();
+
+        // Find eyes positions and dimensions
+        let mut px1 = 0;
         for x in 0..code_width {
-            let c = colors[y * code_width + x];
+            if let qrcode::Color::Light = colors[x] {
+                break;
+            }
 
-            if let qrcode::Color::Dark = c {
-                if !(x <= px1 && y <= py1 || x <= px1 && y >= py2 || x >= px2 && y <= py1) {
-                    let cx = module_width / 2 + (x + quiet_zone) * module_width;
-                    let cy = module_width / 2 + (y + quiet_zone) * module_width;
+            px1 = x;
+        }
 
-                    let k = 1;
+        let mut px2 = 0;
+        for x in (0..code_width).rev() {
+            if let qrcode::Color::Light = colors[x] {
+                break;
+            }
 
-                    if cx >= (logo_img_pos - k * module_width)
-                        && cx <= (logo_img_pos + logo_img_size + k * module_width)
-                        && cy >= (logo_img_pos - k * module_width)
-                        && cy <= (logo_img_pos + logo_img_size + k * module_width)
-                    {
-                        continue;
+            px2 = x;
+        }
+
+        let mut py1 = 0;
+        for y in 0..code_width {
+            if let qrcode::Color::Light = colors[y * code_width] {
+                break;
+            }
+
+            py1 = y;
+        }
+
+        let mut py2 = 0;
+        for y in (0..code_width).rev() {
+            if let qrcode::Color::Light = colors[y * code_width] {
+                break;
+            }
+
+            py2 = y;
+        }
+
+        let qrcode_size = (code_width + 2 * quiet_zone) * module_width; // qrcode width in pixels
+        let qrcode_data_size = code_width * module_width; // qrcode data size in pixels
+        let eye_size = (px1 + 1) * module_width; // eye size in pixels
+        let dot_radius = module_width / 2 - module_width / 10; // dots size in pixels
+
+        let logo_img_size = (((qrcode_data_size * qrcode_data_size - 3 * eye_size * eye_size) * 5
+            / 100) as f64)
+            .sqrt() as usize; // logo image width in pixels
+        let logo_img_pos = ((code_width + 2 * quiet_zone) * module_width / 2) - logo_img_size / 2; // logo position in pixels
+        let logo_quiet_zone = self.logo_quiet_zone.unwrap_or(1);
+
+        let resized_logo = image::imageops::resize(
+            self.logo_image,
+            logo_img_size as u32,
+            logo_img_size as u32,
+            image::imageops::FilterType::Gaussian,
+        );
+
+        let mut img = RgbaImage::from_pixel(qrcode_size as u32, qrcode_size as u32, RGBA_WHITE);
+
+        // top-left eye
+        draw_qrcode_eye(
+            &mut img,
+            (
+                (quiet_zone * module_width) as i32,
+                (quiet_zone * module_width) as i32,
+            ),
+            (eye_size as u32, eye_size as u32),
+            RGBA_BLACK,
+            RGBA_WHITE,
+        );
+        // top-right eye
+        draw_qrcode_eye(
+            &mut img,
+            (
+                ((px2 + quiet_zone) * module_width) as i32,
+                (quiet_zone * module_width) as i32,
+            ),
+            (eye_size as u32, eye_size as u32),
+            RGBA_BLACK,
+            RGBA_WHITE,
+        );
+        // bottom-left eye
+        draw_qrcode_eye(
+            &mut img,
+            (
+                (quiet_zone * module_width) as i32,
+                ((py2 + quiet_zone) * module_width) as i32,
+            ),
+            (eye_size as u32, eye_size as u32),
+            RGBA_BLACK,
+            RGBA_WHITE,
+        );
+
+        for y in 0..code_width {
+            for x in 0..code_width {
+                let c = colors[y * code_width + x];
+
+                if let qrcode::Color::Dark = c {
+                    if !(x <= px1 && y <= py1 || x <= px1 && y >= py2 || x >= px2 && y <= py1) {
+                        let cx = module_width / 2 + (x + quiet_zone) * module_width;
+                        let cy = module_width / 2 + (y + quiet_zone) * module_width;
+
+                        if cx >= (logo_img_pos - logo_quiet_zone * module_width)
+                            && cx <= (logo_img_pos + logo_img_size + logo_quiet_zone * module_width)
+                            && cy >= (logo_img_pos - logo_quiet_zone * module_width)
+                            && cy <= (logo_img_pos + logo_img_size + logo_quiet_zone * module_width)
+                        {
+                            continue;
+                        }
+
+                        imageproc::drawing::draw_filled_circle_mut(
+                            &mut img,
+                            (cx as i32, cy as i32),
+                            dot_radius as i32,
+                            RGBA_BLACK,
+                        );
                     }
-
-                    imageproc::drawing::draw_filled_circle_mut(
-                        &mut img,
-                        (cx as i32, cy as i32),
-                        dot_size as i32,
-                        RGBA_BLACK,
-                    );
                 }
             }
         }
+
+        image::imageops::overlay(
+            &mut img,
+            &resized_logo,
+            logo_img_pos as u32,
+            logo_img_pos as u32,
+        );
+
+        Ok(DynamicImage::ImageRgba8(img))
     }
-
-    image::imageops::overlay(
-        &mut img,
-        &resized_logo,
-        logo_img_pos as u32,
-        logo_img_pos as u32,
-    );
-
-    Ok(DynamicImage::ImageRgba8(img))
 }
 
 #[cfg(test)]
@@ -181,8 +217,11 @@ mod tests {
         let logo =
             DynamicImage::ImageRgba8(RgbaImage::from_pixel(512, 512, Rgba([255, 0, 0, 255])));
 
-        let img =
-            super::make(b"12345678abcdefghijklmnopqrstuvwxyz", &logo).expect("qrcode generated");
+        let img = super::Builder::new(b"12345678abcdefghijklmnopqrstuvwxyz".as_ref(), &logo)
+            .with_module_width(44)
+            .build()
+            .expect("qrcode generated");
+
         let img_gray = img.into_luma8();
 
         let mut decoder = quircs::Quirc::default();
