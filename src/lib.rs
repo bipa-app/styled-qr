@@ -1,6 +1,3 @@
-#![allow(clippy::all)]
-#![deny(clippy::correctness)]
-
 use drawing::draw_qrcode_eye;
 use image::{DynamicImage, GenericImageView, Rgba, RgbaImage};
 use qrcode::types::QrError;
@@ -83,8 +80,8 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
 
         // Find eyes positions and dimensions
         let mut px1 = 0;
-        for x in 0..code_width {
-            if let qrcode::Color::Light = colors[x] {
+        for (x, color) in colors.iter().enumerate().take(code_width) {
+            if let qrcode::Color::Light = color {
                 break;
             }
 
