@@ -2,6 +2,7 @@
 name = "qrcoder"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
 [dependencies]
 qrcode = { version = "0.12", default-features = false }
