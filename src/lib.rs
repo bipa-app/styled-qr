@@ -1,3 +1,11 @@
+#![deny(
+    clippy::complexity,
+    clippy::correctness,
+    clippy::perf,
+    clippy::style,
+    clippy::suspicious
+)]
+
 use drawing::draw_qrcode_eye;
 use image::{DynamicImage, GenericImageView, Rgba, RgbaImage};
 use qrcode::types::QrError;
@@ -174,7 +182,7 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
                 let c = colors[y * code_width + x];
 
                 if let qrcode::Color::Dark = c {
-                    if !(x <= px1 && y <= py1 || x <= px1 && y >= py2 || x >= px2 && y <= py1) {
+                    if !((y >= py2 || y <= py1) && x <= px1 || x >= px2 && y <= py1) {
                         let cx = module_width / 2 + (x + quiet_zone) * module_width;
                         let cy = module_width / 2 + (y + quiet_zone) * module_width;
 
