@@ -208,8 +208,8 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
         image::imageops::overlay(
             &mut img,
             &resized_logo,
-            logo_img_pos as u32,
-            logo_img_pos as u32,
+            logo_img_pos as i64,
+            logo_img_pos as i64,
         );
 
         Ok(DynamicImage::ImageRgba8(img))

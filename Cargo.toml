@@ -6,8 +6,8 @@ publish = false
 
 [dependencies]
 qrcode = { version = "0.12", default-features = false }
-image = { version = "0.23", default-features = false }
-imageproc = { version = "0.22", default-features = false }
+image = { version = "0.24", default-features = false }
+imageproc = { version = "0.23", default-features = false }
 thiserror = { version = "1.0", default-features = false }
 
 [dev-dependencies]
