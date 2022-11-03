@@ -77,7 +77,7 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
 
         let mut canvas = qrcode::canvas::Canvas::new(version, ec_level);
         canvas.draw_all_functional_patterns();
-        canvas.draw_data(&*data_codewords, &*ec_codewords);
+        canvas.draw_data(&data_codewords, &ec_codewords);
         let data_canvas = canvas.apply_best_mask();
 
         let code_width = version.width() as usize; // code width in modules
