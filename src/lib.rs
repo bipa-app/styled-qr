@@ -1,11 +1,3 @@
-#![deny(
-    clippy::complexity,
-    clippy::correctness,
-    clippy::perf,
-    clippy::style,
-    clippy::suspicious
-)]
-
 use drawing::draw_qrcode_eye;
 use image::{DynamicImage, GenericImageView, Rgba, RgbaImage};
 use qrcode::types::QrError;
