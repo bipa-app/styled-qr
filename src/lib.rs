@@ -35,6 +35,7 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
         }
     }
 
+    #[must_use]
     pub fn with_module_width(self, module_width: usize) -> Self {
         Self {
             module_width: Some(module_width),
@@ -42,6 +43,7 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
         }
     }
 
+    #[must_use]
     pub fn with_quiet_zone(self, quiet_zone: usize) -> Self {
         Self {
             quiet_zone: Some(quiet_zone),
@@ -49,6 +51,7 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
         }
     }
 
+    #[must_use]
     pub fn with_logo_quiet_zone(self, logo_quiet_zone: usize) -> Self {
         Self {
             logo_quiet_zone: Some(logo_quiet_zone),
