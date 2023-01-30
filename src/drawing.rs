@@ -85,17 +85,17 @@ pub fn draw_qrcode_eye<I>(
 {
     let corner_radius_r = 60f64 / 308f64;
 
-    let outter_rect_corner_radius = (corner_radius_r * w as f64) as i32;
+    let outter_rect_corner_radius = (corner_radius_r * f64::from(w)) as i32;
 
     let middle_rect_r: f64 = 228f64 / 308f64;
-    let middle_rect_width = (w as f64 * middle_rect_r) as u32;
-    let middle_rect_height = (h as f64 * middle_rect_r) as u32;
-    let middle_rect_corner_radius = (corner_radius_r * middle_rect_width as f64) as i32;
+    let middle_rect_width = (f64::from(w) * middle_rect_r) as u32;
+    let middle_rect_height = (f64::from(h) * middle_rect_r) as u32;
+    let middle_rect_corner_radius = (corner_radius_r * f64::from(middle_rect_width)) as i32;
 
     let inner_rect_r: f64 = 138f64 / 308f64;
-    let inner_rect_width = (w as f64 * inner_rect_r) as u32;
-    let inner_rect_height = (h as f64 * inner_rect_r) as u32;
-    let inner_rect_corner_radius = (corner_radius_r * inner_rect_width as f64) as i32;
+    let inner_rect_width = (f64::from(w) * inner_rect_r) as u32;
+    let inner_rect_height = (f64::from(h) * inner_rect_r) as u32;
+    let inner_rect_corner_radius = (corner_radius_r * f64::from(inner_rect_width)) as i32;
 
     draw_filled_rounded_rect(
         img,
