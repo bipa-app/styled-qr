@@ -59,6 +59,7 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
         }
     }
 
+    #[allow(clippy::similar_names)]
     pub fn build(self) -> Result<DynamicImage, BuildError> {
         let ec_level = qrcode::EcLevel::H;
         let encoded_data =
