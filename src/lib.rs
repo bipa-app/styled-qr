@@ -1,3 +1,15 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::missing_panics_doc
+)]
+// These allows should not be here. I'm adding them
+// because they'll help a lot adding the lints on the
+// project as a whole and this package uses some math
+// I'm afraid to touch for now, but is to be done in future.
+// TODO(lsunsi): avoid these allows
+
 use drawing::draw_qrcode_eye;
 use image::{DynamicImage, GenericImageView, Rgba, RgbaImage};
 use qrcode::types::QrError;
