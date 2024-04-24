@@ -12,3 +12,6 @@ thiserror = { version = "1.0.0", default-features = false }
 
 [dev-dependencies]
 quircs = { version = "0.10.0", default-features = false }
+
+[lints]
+workspace = true
