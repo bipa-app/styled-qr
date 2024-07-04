@@ -85,7 +85,7 @@ pub fn draw_qrcode_eye<I>(
 {
     let corner_radius_r = 60f64 / 308f64;
 
-    let outter_rect_corner_radius = (corner_radius_r * f64::from(w)) as i32;
+    let outer_rect_corner_radius = (corner_radius_r * f64::from(w)) as i32;
 
     let middle_rect_r: f64 = 228f64 / 308f64;
     let middle_rect_width = (f64::from(w) * middle_rect_r) as u32;
@@ -100,7 +100,7 @@ pub fn draw_qrcode_eye<I>(
     draw_filled_rounded_rect(
         img,
         Rect::at(x, y).of_size(w, h),
-        outter_rect_corner_radius,
+        outer_rect_corner_radius,
         dark_color,
     );
 
