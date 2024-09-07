@@ -1,8 +1,7 @@
-#![allow(
+#![expect(
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
-    clippy::cast_precision_loss,
-    clippy::missing_panics_doc
+    clippy::cast_precision_loss
 )]
 // These allows should not be here. I'm adding them
 // because they'll help a lot adding the lints on the
@@ -71,7 +70,7 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
         }
     }
 
-    #[allow(clippy::similar_names)]
+    #[expect(clippy::similar_names)]
     pub fn build(self) -> Result<DynamicImage, BuildError> {
         let ec_level = qrcode::EcLevel::H;
         let encoded_data =
