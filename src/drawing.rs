@@ -1,6 +1,6 @@
 use image::GenericImage;
 use imageproc::{
-    drawing::{draw_filled_circle_mut, draw_filled_rect_mut, Canvas},
+    drawing::{Canvas, draw_filled_circle_mut, draw_filled_rect_mut},
     rect::Rect,
 };
 
