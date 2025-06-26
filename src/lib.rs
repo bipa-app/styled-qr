@@ -189,26 +189,26 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
             for x in 0..code_width {
                 let c = colors[y * code_width + x];
 
-                if let qrcode::Color::Dark = c {
-                    if !((y >= py2 || y <= py1) && x <= px1 || x >= px2 && y <= py1) {
-                        let cx = module_width / 2 + (x + quiet_zone) * module_width;
-                        let cy = module_width / 2 + (y + quiet_zone) * module_width;
+                if let qrcode::Color::Dark = c
+                    && !((y >= py2 || y <= py1) && x <= px1 || x >= px2 && y <= py1)
+                {
+                    let cx = module_width / 2 + (x + quiet_zone) * module_width;
+                    let cy = module_width / 2 + (y + quiet_zone) * module_width;
 
-                        if cx >= (logo_img_pos - logo_quiet_zone * module_width)
-                            && cx <= (logo_img_pos + logo_img_size + logo_quiet_zone * module_width)
-                            && cy >= (logo_img_pos - logo_quiet_zone * module_width)
-                            && cy <= (logo_img_pos + logo_img_size + logo_quiet_zone * module_width)
-                        {
-                            continue;
-                        }
-
-                        imageproc::drawing::draw_filled_circle_mut(
-                            &mut img,
-                            (cx as i32, cy as i32),
-                            dot_radius as i32,
-                            RGBA_BLACK,
-                        );
+                    if cx >= (logo_img_pos - logo_quiet_zone * module_width)
+                        && cx <= (logo_img_pos + logo_img_size + logo_quiet_zone * module_width)
+                        && cy >= (logo_img_pos - logo_quiet_zone * module_width)
+                        && cy <= (logo_img_pos + logo_img_size + logo_quiet_zone * module_width)
+                    {
+                        continue;
                     }
+
+                    imageproc::drawing::draw_filled_circle_mut(
+                        &mut img,
+                        (cx as i32, cy as i32),
+                        dot_radius as i32,
+                        RGBA_BLACK,
+                    );
                 }
             }
         }
