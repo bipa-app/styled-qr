@@ -228,14 +228,13 @@ mod tests {
     use image::{DynamicImage, Rgba, RgbaImage};
 
     #[test]
-    fn it_works() {
+    fn it_works() -> Result<(), Box<dyn std::error::Error>> {
         let logo =
             DynamicImage::ImageRgba8(RgbaImage::from_pixel(512, 512, Rgba([255, 0, 0, 255])));
 
         let img = super::Builder::new(b"12345678abcdefghijklmnopqrstuvwxyz".as_ref(), &logo)
             .with_module_width(44)
-            .build()
-            .expect("qrcode generated");
+            .build()?;
 
         let img_gray = img.into_luma8();
 
@@ -247,16 +246,16 @@ mod tests {
                 img_gray.height() as usize,
                 &img_gray,
             )
-            .collect::<Result<Vec<_>, _>>()
-            .expect("identified code in generated image");
+            .collect::<Result<Vec<_>, _>>()?;
         assert_eq!(codes.len(), 1);
 
         let code = codes[0];
-        let decoded_data = code.decode().expect("decoded generated qrcode");
+        let decoded_data = code.decode()?;
 
         assert_eq!(
-            std::str::from_utf8(&decoded_data.payload).unwrap(),
+            std::str::from_utf8(&decoded_data.payload)?,
             "12345678abcdefghijklmnopqrstuvwxyz"
         );
+        Ok(())
     }
 }
