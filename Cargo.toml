@@ -8,7 +8,7 @@ publish = false
 image = { version = "0.25.0", default-features = false }
 imageproc = { version = "0.27.0", default-features = false }
 qrcode = { version = "0.14.0", default-features = false }
-thiserror = { version = "2.0.3", default-features = false }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 quircs = { version = "0.10.0", default-features = false }
