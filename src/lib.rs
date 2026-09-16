@@ -1,6 +1,5 @@
 #![expect(
     clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
     clippy::cast_precision_loss,
     reason = "too complicated already"
 )]
@@ -13,6 +12,7 @@
 use drawing::draw_qrcode_eye;
 use image::{DynamicImage, GenericImageView, Rgba, RgbaImage};
 use qrcode::types::QrError;
+use std::num::TryFromIntError;
 use thiserror::Error;
 
 mod drawing;
@@ -34,6 +34,8 @@ pub enum BuildError {
     Encoding(QrError),
     #[error("Failed to construct codewords: {0}")]
     Codewords(QrError),
+    #[error("Failed to fit the image in the drawable pixel range: {0}")]
+    Geometry(#[from] TryFromIntError),
 }
 
 impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Builder<'a, I> {
@@ -133,7 +135,8 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
         let qrcode_size = (code_width + 2 * quiet_zone) * module_width; // qrcode width in pixels
         let qrcode_data_size = code_width * module_width; // qrcode data size in pixels
         let eye_size = (px1 + 1) * module_width; // eye size in pixels
-        let dot_radius = module_width / 2 - module_width / 10; // dots size in pixels
+        let dot_radius = i32::try_from(module_width / 2 - module_width / 10)?; // dots size in pixels
+        let margin = i32::try_from(quiet_zone * module_width)?; // quiet zone width in pixels
 
         let logo_img_size = (((qrcode_data_size * qrcode_data_size - 3 * eye_size * eye_size) * 5
             / 100) as f64)
@@ -153,36 +156,27 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
         // top-left eye
         draw_qrcode_eye(
             &mut img,
-            (
-                (quiet_zone * module_width) as i32,
-                (quiet_zone * module_width) as i32,
-            ),
+            (margin, margin),
             (eye_size as u32, eye_size as u32),
             RGBA_BLACK,
             RGBA_WHITE,
-        );
+        )?;
         // top-right eye
         draw_qrcode_eye(
             &mut img,
-            (
-                ((px2 + quiet_zone) * module_width) as i32,
-                (quiet_zone * module_width) as i32,
-            ),
+            (i32::try_from((px2 + quiet_zone) * module_width)?, margin),
             (eye_size as u32, eye_size as u32),
             RGBA_BLACK,
             RGBA_WHITE,
-        );
+        )?;
         // bottom-left eye
         draw_qrcode_eye(
             &mut img,
-            (
-                (quiet_zone * module_width) as i32,
-                ((py2 + quiet_zone) * module_width) as i32,
-            ),
+            (margin, i32::try_from((py2 + quiet_zone) * module_width)?),
             (eye_size as u32, eye_size as u32),
             RGBA_BLACK,
             RGBA_WHITE,
-        );
+        )?;
 
         for y in 0..code_width {
             for x in 0..code_width {
@@ -204,20 +198,16 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
 
                     imageproc::drawing::draw_filled_circle_mut(
                         &mut img,
-                        (cx as i32, cy as i32),
-                        dot_radius as i32,
+                        (i32::try_from(cx)?, i32::try_from(cy)?),
+                        dot_radius,
                         RGBA_BLACK,
                     );
                 }
             }
         }
 
-        image::imageops::overlay(
-            &mut img,
-            &resized_logo,
-            logo_img_pos as i64,
-            logo_img_pos as i64,
-        );
+        let logo_origin = i64::try_from(logo_img_pos)?;
+        image::imageops::overlay(&mut img, &resized_logo, logo_origin, logo_origin);
 
         Ok(DynamicImage::ImageRgba8(img))
     }
@@ -257,5 +247,18 @@ mod tests {
             "12345678abcdefghijklmnopqrstuvwxyz"
         );
         Ok(())
+    }
+
+    #[test]
+    fn refuses_a_quiet_zone_wider_than_the_drawable_range() {
+        let logo =
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(512, 512, Rgba([255, 0, 0, 255])));
+
+        let err = super::Builder::new(b"12345678".as_ref(), &logo)
+            .with_quiet_zone(usize::try_from(i32::MAX).unwrap())
+            .build()
+            .unwrap_err();
+
+        assert!(matches!(err, super::BuildError::Geometry(_)));
     }
 }

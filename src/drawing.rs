@@ -3,6 +3,7 @@ use imageproc::{
     drawing::{Canvas, draw_filled_circle_mut, draw_filled_rect_mut},
     rect::Rect,
 };
+use std::num::TryFromIntError;
 
 pub fn draw_filled_rounded_rect<I>(
     img: &mut I,
@@ -79,7 +80,8 @@ pub fn draw_qrcode_eye<I>(
     (w, h): (u32, u32),
     dark_color: <I as Canvas>::Pixel,
     light_color: <I as Canvas>::Pixel,
-) where
+) -> Result<(), TryFromIntError>
+where
     I: GenericImage,
     <I as Canvas>::Pixel: 'static,
 {
@@ -107,8 +109,8 @@ pub fn draw_qrcode_eye<I>(
     draw_filled_rounded_rect(
         img,
         Rect::at(
-            x + (w - middle_rect_width) as i32 / 2,
-            y + (h - middle_rect_height) as i32 / 2,
+            x + i32::try_from(w - middle_rect_width)? / 2,
+            y + i32::try_from(h - middle_rect_height)? / 2,
         )
         .of_size(middle_rect_width, middle_rect_height),
         middle_rect_corner_radius,
@@ -118,11 +120,13 @@ pub fn draw_qrcode_eye<I>(
     draw_filled_rounded_rect(
         img,
         Rect::at(
-            x + (w - inner_rect_width) as i32 / 2,
-            y + (h - inner_rect_height) as i32 / 2,
+            x + i32::try_from(w - inner_rect_width)? / 2,
+            y + i32::try_from(h - inner_rect_height)? / 2,
         )
         .of_size(inner_rect_width, inner_rect_height),
         inner_rect_corner_radius,
         dark_color,
     );
+
+    Ok(())
 }
