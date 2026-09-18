@@ -1,14 +1,3 @@
-#![expect(
-    clippy::cast_possible_truncation,
-    clippy::cast_precision_loss,
-    reason = "too complicated already"
-)]
-// These allows should not be here. I'm adding them
-// because they'll help a lot adding the lints on the
-// project as a whole and this package uses some math
-// I'm afraid to touch for now, but is to be done in future.
-// TODO(lsunsi): avoid these allows
-
 use drawing::draw_qrcode_eye;
 use image::{DynamicImage, GenericImageView, Rgba, RgbaImage};
 use qrcode::types::QrError;
@@ -138,26 +127,30 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
         let dot_radius = i32::try_from(module_width / 2 - module_width / 10)?; // dots size in pixels
         let margin = i32::try_from(quiet_zone * module_width)?; // quiet zone width in pixels
 
-        let logo_img_size = (((qrcode_data_size * qrcode_data_size - 3 * eye_size * eye_size) * 5
-            / 100) as f64)
-            .sqrt() as usize; // logo image width in pixels
+        let logo_img_size =
+            ((qrcode_data_size * qrcode_data_size - 3 * eye_size * eye_size) * 5 / 100).isqrt(); // logo image width in pixels
         let logo_img_pos = ((code_width + 2 * quiet_zone) * module_width / 2) - logo_img_size / 2; // logo position in pixels
         let logo_quiet_zone = self.logo_quiet_zone.unwrap_or(1);
 
+        let logo_width = u32::try_from(logo_img_size)?;
+
         let resized_logo = image::imageops::resize(
             self.logo_image,
-            logo_img_size as u32,
-            logo_img_size as u32,
+            logo_width,
+            logo_width,
             image::imageops::FilterType::Gaussian,
         );
 
-        let mut img = RgbaImage::from_pixel(qrcode_size as u32, qrcode_size as u32, RGBA_WHITE);
+        let img_width = u32::try_from(qrcode_size)?;
+        let mut img = RgbaImage::from_pixel(img_width, img_width, RGBA_WHITE);
+
+        let eye_width = u32::try_from(eye_size)?;
 
         // top-left eye
         draw_qrcode_eye(
             &mut img,
             (margin, margin),
-            (eye_size as u32, eye_size as u32),
+            (eye_width, eye_width),
             RGBA_BLACK,
             RGBA_WHITE,
         )?;
@@ -165,7 +158,7 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
         draw_qrcode_eye(
             &mut img,
             (i32::try_from((px2 + quiet_zone) * module_width)?, margin),
-            (eye_size as u32, eye_size as u32),
+            (eye_width, eye_width),
             RGBA_BLACK,
             RGBA_WHITE,
         )?;
@@ -173,7 +166,7 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
         draw_qrcode_eye(
             &mut img,
             (margin, i32::try_from((py2 + quiet_zone) * module_width)?),
-            (eye_size as u32, eye_size as u32),
+            (eye_width, eye_width),
             RGBA_BLACK,
             RGBA_WHITE,
         )?;

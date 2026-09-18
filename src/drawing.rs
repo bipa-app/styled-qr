@@ -5,6 +5,17 @@ use imageproc::{
 };
 use std::num::TryFromIntError;
 
+// The eye artwork is a 308px square and the four measurements below are in its units, so each
+// one is an exact integer fraction of the width the eye is drawn at.
+const ARTWORK_WIDTH: u64 = 308;
+const CORNER_RADIUS: u64 = 60;
+const MIDDLE_RECT_WIDTH: u64 = 228;
+const INNER_RECT_WIDTH: u64 = 138;
+
+fn artwork_fraction(drawn_width: u32, artwork_part: u64) -> u64 {
+    u64::from(drawn_width) * artwork_part / ARTWORK_WIDTH
+}
+
 pub fn draw_filled_rounded_rect<I>(
     img: &mut I,
     rect: Rect,
@@ -85,19 +96,17 @@ where
     I: GenericImage,
     <I as Canvas>::Pixel: 'static,
 {
-    let corner_radius_r = 60f64 / 308f64;
+    let outer_rect_corner_radius = i32::try_from(artwork_fraction(w, CORNER_RADIUS))?;
 
-    let outer_rect_corner_radius = (corner_radius_r * f64::from(w)) as i32;
+    let middle_rect_width = u32::try_from(artwork_fraction(w, MIDDLE_RECT_WIDTH))?;
+    let middle_rect_height = u32::try_from(artwork_fraction(h, MIDDLE_RECT_WIDTH))?;
+    let middle_rect_corner_radius =
+        i32::try_from(artwork_fraction(middle_rect_width, CORNER_RADIUS))?;
 
-    let middle_rect_r: f64 = 228f64 / 308f64;
-    let middle_rect_width = (f64::from(w) * middle_rect_r) as u32;
-    let middle_rect_height = (f64::from(h) * middle_rect_r) as u32;
-    let middle_rect_corner_radius = (corner_radius_r * f64::from(middle_rect_width)) as i32;
-
-    let inner_rect_r: f64 = 138f64 / 308f64;
-    let inner_rect_width = (f64::from(w) * inner_rect_r) as u32;
-    let inner_rect_height = (f64::from(h) * inner_rect_r) as u32;
-    let inner_rect_corner_radius = (corner_radius_r * f64::from(inner_rect_width)) as i32;
+    let inner_rect_width = u32::try_from(artwork_fraction(w, INNER_RECT_WIDTH))?;
+    let inner_rect_height = u32::try_from(artwork_fraction(h, INNER_RECT_WIDTH))?;
+    let inner_rect_corner_radius =
+        i32::try_from(artwork_fraction(inner_rect_width, CORNER_RADIUS))?;
 
     draw_filled_rounded_rect(
         img,
