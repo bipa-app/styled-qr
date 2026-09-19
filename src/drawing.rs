@@ -21,11 +21,13 @@ pub fn draw_filled_rounded_rect<I>(
     rect: Rect,
     corner_radius: i32,
     color: <I as Canvas>::Pixel,
-) where
+) -> Result<(), TryFromIntError>
+where
     I: GenericImage,
     <I as Canvas>::Pixel: 'static,
 {
-    let double_corner_radius = (corner_radius * 2) as u32;
+    let corner_size = u32::try_from(corner_radius)?;
+    let double_corner_radius = corner_size * 2;
 
     draw_filled_circle_mut(
         img,
@@ -72,17 +74,19 @@ pub fn draw_filled_rounded_rect<I>(
         draw_filled_rect_mut(
             img,
             Rect::at(rect.left(), rect.top() + corner_radius)
-                .of_size(corner_radius as u32, rect.height() - double_corner_radius),
+                .of_size(corner_size, rect.height() - double_corner_radius),
             color,
         );
 
         draw_filled_rect_mut(
             img,
             Rect::at(rect.right() - corner_radius, rect.top() + corner_radius)
-                .of_size(corner_radius as u32, rect.height() - double_corner_radius),
+                .of_size(corner_size, rect.height() - double_corner_radius),
             color,
         );
     }
+
+    Ok(())
 }
 
 pub fn draw_qrcode_eye<I>(
@@ -113,7 +117,7 @@ where
         Rect::at(x, y).of_size(w, h),
         outer_rect_corner_radius,
         dark_color,
-    );
+    )?;
 
     draw_filled_rounded_rect(
         img,
@@ -124,7 +128,7 @@ where
         .of_size(middle_rect_width, middle_rect_height),
         middle_rect_corner_radius,
         light_color,
-    );
+    )?;
 
     draw_filled_rounded_rect(
         img,
@@ -135,7 +139,7 @@ where
         .of_size(inner_rect_width, inner_rect_height),
         inner_rect_corner_radius,
         dark_color,
-    );
+    )?;
 
     Ok(())
 }

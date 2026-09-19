@@ -78,7 +78,7 @@ impl<'a, I: GenericImageView<Pixel = <RgbaImage as GenericImageView>::Pixel>> Bu
         canvas.draw_data(&data_codewords, &ec_codewords);
         let data_canvas = canvas.apply_best_mask();
 
-        let code_width = version.width() as usize; // code width in modules
+        let code_width = usize::try_from(version.width())?; // code width in modules
         let module_width = self.module_width.unwrap_or(11); // module width in pixels
         let quiet_zone = self.quiet_zone.unwrap_or(4); // quiet zone width in modules
 
