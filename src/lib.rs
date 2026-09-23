@@ -225,8 +225,8 @@ mod tests {
 
         let codes = decoder
             .identify(
-                img_gray.width() as usize,
-                img_gray.height() as usize,
+                usize::try_from(img_gray.width()).unwrap(),
+                usize::try_from(img_gray.height()).unwrap(),
                 &img_gray,
             )
             .collect::<Result<Vec<_>, _>>()?;
