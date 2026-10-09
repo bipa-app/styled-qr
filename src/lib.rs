@@ -5,6 +5,18 @@ use std::num::TryFromIntError;
 use thiserror::Error;
 
 mod drawing;
+mod error;
+mod geometry;
+mod style;
+mod units;
+
+pub use error::Error;
+pub use geometry::{Disc, Point, Rect, Ring, RoundedRect, Shape};
+pub use style::{AlignmentStyle, Color, MIN_CONTRAST, ModuleShape, Palette, PatternShape, Style};
+pub use units::{
+    MAX_CANVAS_PX, MAX_MODULE_PX, MAX_PADDING, MAX_QUIET_ZONE, ModuleSize, Padding, QuietZone,
+    Ratio, Roundness,
+};
 
 const RGBA_BLACK: Rgba<u8> = Rgba([0, 0, 0, 255]);
 const RGBA_WHITE: Rgba<u8> = Rgba([255, 255, 255, 255]);
