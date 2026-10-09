@@ -158,6 +158,15 @@ pub(crate) fn floor_clamped(value: f64, max: u32) -> u32 {
     lo
 }
 
+pub(crate) fn ceil_clamped(value: f64, max: u32) -> u32 {
+    let floor = floor_clamped(value, max);
+    if f64::from(floor) < value && floor < max {
+        floor + 1
+    } else {
+        floor
+    }
+}
+
 pub(crate) fn round_clamped(value: f64, max: u32) -> u32 {
     floor_clamped(value + 0.5, max)
 }
@@ -231,11 +240,16 @@ mod tests {
         assert_eq!(floor_clamped(3.999, 10), 3);
         assert_eq!(floor_clamped(4.0, 10), 4);
         assert_eq!(floor_clamped(42.0, 10), 10);
+        assert_eq!(ceil_clamped(3.001, 10), 4);
+        assert_eq!(ceil_clamped(3.0, 10), 3);
+        assert_eq!(ceil_clamped(9.5, 10), 10);
+        assert_eq!(ceil_clamped(12.5, 10), 10);
         assert_eq!(round_clamped(2.49, 10), 2);
         assert_eq!(round_clamped(2.5, 10), 3);
         for v in 0..2000 {
             let x = f64::from(v) / 7.0;
             assert!((f64::from(floor_clamped(x, 1000)) - x.floor().min(1000.0)).abs() < 1e-12);
+            assert!((f64::from(ceil_clamped(x, 1000)) - x.ceil().min(1000.0)).abs() < 1e-12);
         }
     }
 }

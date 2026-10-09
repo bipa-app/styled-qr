@@ -5,7 +5,8 @@ edition = "2024"
 publish = false
 
 [dependencies]
-image = { workspace = true }
+base64ct = { workspace = true, features = ["alloc"] }
+image = { workspace = true, features = ["png"] }
 imageproc = { version = "0.27.0", default-features = false }
 qrcode = { version = "0.14.0", default-features = false }
 thiserror = { workspace = true }
