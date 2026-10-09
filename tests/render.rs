@@ -650,3 +650,26 @@ fn connected_style_decodes_and_joins_neighbors() {
         assert_eq!(*image.get_pixel(x, center_y), Rgba([0, 0, 0, 255]), "x {x}");
     }
 }
+
+#[test]
+fn logo_plate_keeps_the_code_readable() {
+    let plate = qrcoder::Plate {
+        color: Color::WHITE,
+        margin: Ratio::new(0.12).expect("margin"),
+        roundness: qrcoder::Roundness::new(0.4).expect("roundness"),
+    };
+    for len in [20usize, 150] {
+        let data = payload(len);
+        let symbol = Symbol::encode(data.as_bytes(), EcLevel::H).expect("encode");
+        let logo = Logo::new(&load(SampleLogo::Sparse))
+            .expect("logo")
+            .with_plate(plate);
+        let scene = compose(&symbol, layout(8, 4), Style::BRAND, Some(&logo));
+        let rect = scene.logo_rect().expect("logo");
+        let image = scene.to_image();
+        let center = rect.center();
+        let edge = image.get_pixel(pixel(rect.min().x) + 2, pixel(center.y));
+        assert_eq!(*edge, Rgba([255, 255, 255, 255]));
+        assert_eq!(decode(&image), vec![data]);
+    }
+}
