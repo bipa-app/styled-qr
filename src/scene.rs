@@ -7,7 +7,7 @@ use crate::budget::BudgetUsage;
 use crate::error::Error;
 use crate::geometry::{Point, Rect, Shape};
 use crate::logo::{Logo, PlacedLogo};
-use crate::style::{AlignmentStyle, Color, Style};
+use crate::style::{AlignmentStyle, Color, Neighbors, Side, Style};
 use crate::symbol::{Pos, Role, Symbol};
 use crate::units::{MAX_CANVAS_PX, MAX_MODULE_PX, ModuleSize, QuietZone};
 use crate::{raster, svg};
@@ -275,15 +275,34 @@ impl<'a> Composer<'a> {
 
     fn module_shapes(&self, hidden: &BTreeSet<Pos>) -> Vec<Shape> {
         let pattern_alignment = matches!(self.style.alignment, AlignmentStyle::Pattern(_));
+        let drawn = |x: Option<u8>, y: Option<u8>| {
+            x.zip(y).map(|(x, y)| Pos::new(x, y)).is_some_and(|pos| {
+                self.symbol.module(pos).is_some_and(|module| {
+                    module.dark
+                        && module.role != Role::Finder
+                        && !(pattern_alignment && module.role == Role::Alignment)
+                        && !hidden.contains(&pos)
+                })
+            })
+        };
         self.symbol
             .modules()
-            .filter(|(pos, module)| {
-                module.dark
-                    && module.role != Role::Finder
-                    && !(pattern_alignment && module.role == Role::Alignment)
-                    && !hidden.contains(pos)
+            .filter(|(pos, _)| drawn(Some(pos.x), Some(pos.y)))
+            .filter_map(|(pos, _)| {
+                let around = [
+                    (Side::Up, drawn(Some(pos.x), pos.y.checked_sub(1))),
+                    (Side::Right, drawn(pos.x.checked_add(1), Some(pos.y))),
+                    (Side::Down, drawn(Some(pos.x), pos.y.checked_add(1))),
+                    (Side::Left, drawn(pos.x.checked_sub(1), Some(pos.y))),
+                ];
+                let neighbors = around
+                    .into_iter()
+                    .filter(|(_, present)| *present)
+                    .fold(Neighbors::NONE, |n, (side, _)| n.with(side));
+                self.style
+                    .module
+                    .shape_with(self.layout.cell(pos), neighbors)
             })
-            .filter_map(|(pos, _)| self.style.module.shape_in(self.layout.cell(pos)))
             .collect()
     }
 

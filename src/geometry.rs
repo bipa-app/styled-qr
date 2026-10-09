@@ -268,12 +268,144 @@ impl Ring {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RectCorner {
+    TopLeft,
+    TopRight,
+    BottomRight,
+    BottomLeft,
+}
+
+impl RectCorner {
+    pub const ALL: [Self; 4] = [
+        Self::TopLeft,
+        Self::TopRight,
+        Self::BottomRight,
+        Self::BottomLeft,
+    ];
+
+    const fn bit(self) -> u8 {
+        match self {
+            Self::TopLeft => 1,
+            Self::TopRight => 2,
+            Self::BottomRight => 4,
+            Self::BottomLeft => 8,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Corners(u8);
+
+impl Corners {
+    pub const NONE: Self = Self(0);
+    pub const ALL: Self = Self(15);
+
+    #[must_use]
+    pub const fn with(self, corner: RectCorner) -> Self {
+        Self(self.0 | corner.bit())
+    }
+
+    #[must_use]
+    pub const fn contains(self, corner: RectCorner) -> bool {
+        self.0 & corner.bit() != 0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Tile {
+    rect: Rect,
+    radius: f64,
+    rounded: Corners,
+}
+
+impl Tile {
+    #[must_use]
+    pub fn new(rect: Rect, radius: f64, rounded: Corners) -> Self {
+        Self {
+            rect,
+            radius: RoundedRect::new(rect, radius).radius,
+            rounded,
+        }
+    }
+
+    #[must_use]
+    pub const fn rect(self) -> Rect {
+        self.rect
+    }
+
+    #[must_use]
+    pub const fn rounded(self) -> Corners {
+        self.rounded
+    }
+
+    #[must_use]
+    pub fn radii(self) -> [f64; 4] {
+        RectCorner::ALL.map(|corner| {
+            if self.rounded.contains(corner) {
+                self.radius
+            } else {
+                0.0
+            }
+        })
+    }
+
+    fn corner_pieces(self) -> impl Iterator<Item = (Point, Rect)> {
+        let r = self.radius;
+        let Point { x: x0, y: y0 } = self.rect.min;
+        let Point { x: x1, y: y1 } = self.rect.max;
+        let pieces = [
+            (Point::new(x0 + r, y0 + r), Point::new(x0, y0)),
+            (Point::new(x1 - r, y0 + r), Point::new(x1, y0)),
+            (Point::new(x1 - r, y1 - r), Point::new(x1, y1)),
+            (Point::new(x0 + r, y1 - r), Point::new(x0, y1)),
+        ];
+        let rounded = self.rounded;
+        pieces
+            .into_iter()
+            .zip(RectCorner::ALL)
+            .filter(move |(_, corner)| rounded.contains(*corner) && r > 0.0)
+            .map(|((center, corner), _)| (center, Rect::from_corners(center, corner)))
+    }
+
+    fn signed_distance(self, p: Point) -> f64 {
+        let c = self.rect.center();
+        let corner = match (p.x >= c.x, p.y >= c.y) {
+            (false, false) => RectCorner::TopLeft,
+            (true, false) => RectCorner::TopRight,
+            (true, true) => RectCorner::BottomRight,
+            (false, true) => RectCorner::BottomLeft,
+        };
+        let radius = if self.rounded.contains(corner) {
+            self.radius
+        } else {
+            0.0
+        };
+        RoundedRect::new(self.rect, radius).signed_distance(p)
+    }
+
+    fn area(self) -> f64 {
+        let corner = (1.0 - PI / 4.0) * self.radius * self.radius;
+        self.rect.area() - self.corner_pieces().map(|_| corner).sum::<f64>()
+    }
+
+    fn area_within(self, window: Rect) -> f64 {
+        let cut: f64 = self
+            .corner_pieces()
+            .filter_map(|(center, corner)| corner.intersection(window).map(|clip| (center, clip)))
+            .map(|(center, clip)| clip.area() - disc_box_area(self.radius, center, clip))
+            .sum();
+        (self.rect.overlap_area(window) - cut).max(0.0)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Shape {
     Rect(Rect),
     Disc(Disc),
     RoundedRect(RoundedRect),
     Ring(Ring),
+    Tile(Tile),
 }
 
 impl Shape {
@@ -294,6 +426,10 @@ impl Shape {
                 outer: rounded(r.outer),
                 inner: rounded(r.inner),
             }),
+            Self::Tile(t) => Self::Tile(Tile {
+                rect: t.rect.translated(dx, dy),
+                ..t
+            }),
         }
     }
 
@@ -304,6 +440,7 @@ impl Shape {
             Self::Disc(d) => Rect::square(d.center, 2.0 * d.radius),
             Self::RoundedRect(r) => r.rect,
             Self::Ring(r) => r.outer.rect,
+            Self::Tile(t) => t.rect,
         }
     }
 
@@ -314,6 +451,7 @@ impl Shape {
             Self::Disc(d) => PI * d.radius * d.radius,
             Self::RoundedRect(r) => r.area(),
             Self::Ring(r) => r.outer.area() - r.inner.area(),
+            Self::Tile(t) => t.area(),
         }
     }
 
@@ -324,6 +462,7 @@ impl Shape {
             Self::Disc(d) => d.signed_distance(p),
             Self::RoundedRect(r) => r.signed_distance(p),
             Self::Ring(r) => r.outer.signed_distance(p).max(-r.inner.signed_distance(p)),
+            Self::Tile(t) => t.signed_distance(p),
         }
     }
 
@@ -334,6 +473,7 @@ impl Shape {
             Self::Disc(d) => d.area_within(window),
             Self::RoundedRect(r) => r.area_within(window),
             Self::Ring(r) => (r.outer.area_within(window) - r.inner.area_within(window)).max(0.0),
+            Self::Tile(t) => t.area_within(window),
         }
     }
 
@@ -433,6 +573,18 @@ mod tests {
             )),
             Shape::RoundedRect(rr),
             Shape::Ring(Ring::new(rr, inner).expect("ring")),
+            Shape::Tile(Tile::new(
+                Rect::from_corners(Point::new(3.5, 2.25), Point::new(15.5, 17.0)),
+                4.2,
+                Corners::NONE
+                    .with(RectCorner::TopLeft)
+                    .with(RectCorner::BottomRight),
+            )),
+            Shape::Tile(Tile::new(
+                Rect::from_corners(Point::new(1.0, 1.0), Point::new(9.0, 9.0)),
+                99.0,
+                Corners::ALL,
+            )),
         ]
     }
 
@@ -521,6 +673,34 @@ mod tests {
         assert!(close(quadrant_area(r, 1.0, 1.0), 1.0, 1e-12));
         assert!(close(quadrant_area(r, 0.0, 2.0), 0.0, 1e-12));
         assert!(close(quadrant_area(r, r, 0.5), 0.5 * r, 0.05));
+    }
+
+    #[test]
+    fn tiles_match_rounded_rects_and_rects_at_the_extremes() {
+        let rect = Rect::from_corners(Point::new(2.0, 3.0), Point::new(13.0, 14.0));
+        let all = Shape::Tile(Tile::new(rect, 3.0, Corners::ALL));
+        let rounded = Shape::RoundedRect(RoundedRect::new(rect, 3.0));
+        let none = Shape::Tile(Tile::new(rect, 3.0, Corners::NONE));
+        for y in 0..16 {
+            for x in 0..16 {
+                assert!((all.pixel_coverage(x, y) - rounded.pixel_coverage(x, y)).abs() < 1e-12);
+                assert!(
+                    (none.pixel_coverage(x, y) - Shape::Rect(rect).pixel_coverage(x, y)).abs()
+                        < 1e-12
+                );
+            }
+        }
+        let corners = Corners::NONE
+            .with(RectCorner::TopRight)
+            .with(RectCorner::BottomLeft);
+        let tile = Tile::new(rect, 3.0, corners);
+        let same = |a: [f64; 4], b: [f64; 4]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-12);
+        assert!(same(tile.radii(), [0.0, 3.0, 0.0, 3.0]));
+        assert_eq!(tile.rounded(), corners);
+        assert!(corners.contains(RectCorner::TopRight) && !corners.contains(RectCorner::TopLeft));
+        assert!(same(Tile::new(rect, 50.0, Corners::ALL).radii(), [5.5; 4]));
+        assert!(RectCorner::ALL.iter().all(|c| Corners::ALL.contains(*c)));
+        assert!(RectCorner::ALL.iter().all(|c| !Corners::NONE.contains(*c)));
     }
 
     #[test]

@@ -29,10 +29,12 @@ use image::{DynamicImage, GenericImageView, Rgba};
 
 pub use budget::BudgetUsage;
 pub use error::Error;
-pub use geometry::{Disc, Point, Rect, Ring, RoundedRect, Shape};
+pub use geometry::{Corners, Disc, Point, Rect, RectCorner, Ring, RoundedRect, Shape, Tile};
 pub use logo::{Clearance, Logo, LogoSize, OverBudget};
 pub use scene::{Composer, Layer, Layout, Scene};
-pub use style::{AlignmentStyle, Color, MIN_CONTRAST, ModuleShape, Palette, PatternShape, Style};
+pub use style::{
+    AlignmentStyle, Color, MIN_CONTRAST, ModuleShape, Neighbors, Palette, PatternShape, Side, Style,
+};
 pub use symbol::{Corner, EcLevel, Mask, Module, Pos, Role, Symbol, Version};
 pub use units::{
     MAX_CANVAS_PX, MAX_MODULE_PX, MAX_PADDING, MAX_QUIET_ZONE, ModuleSize, Padding, QuietZone,

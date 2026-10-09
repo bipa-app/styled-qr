@@ -617,3 +617,36 @@ fn same_color_layers_meet_without_seams() {
     let Rgba([r, g, b, _]) = *image.get_pixel(7, 15);
     assert_eq!((r, g, b), (128, 64, 191));
 }
+
+#[test]
+fn connected_style_decodes_and_joins_neighbors() {
+    for len in [10usize, 120, 400] {
+        let data = payload(len);
+        let symbol = Symbol::encode(data.as_bytes(), EcLevel::H).expect("encode");
+        for px in [2u32, 6, 11] {
+            let logo = Logo::new(&load(SampleLogo::Coin)).expect("logo");
+            let scene = compose(&symbol, layout(px, 4), Style::CONNECTED, Some(&logo));
+            assert_eq!(
+                decode(&scene.to_image()),
+                vec![data.clone()],
+                "len {len} px {px}"
+            );
+        }
+    }
+    let symbol = Symbol::encode(payload(80).as_bytes(), EcLevel::H).expect("encode");
+    let grid = layout(10, 4);
+    let image = compose(&symbol, grid, Style::CONNECTED, None).to_image();
+    let pair = symbol.modules().find(|(pos, m)| {
+        m.dark
+            && m.role == Role::Data
+            && symbol
+                .module(Pos::new(pos.x + 1, pos.y))
+                .is_some_and(|n| n.dark && n.role == Role::Data)
+    });
+    let (pos, _) = pair.expect("adjacent dark modules");
+    let seam = grid.cell(pos).max();
+    let center_y = pixel(grid.cell(pos).center().y);
+    for x in (pixel(seam.x) - 3)..(pixel(seam.x) + 3) {
+        assert_eq!(*image.get_pixel(x, center_y), Rgba([0, 0, 0, 255]), "x {x}");
+    }
+}

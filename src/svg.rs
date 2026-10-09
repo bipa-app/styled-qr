@@ -5,7 +5,7 @@ use base64ct::{Base64, Encoding};
 use image::{DynamicImage, ImageFormat, RgbaImage};
 
 use crate::error::Error;
-use crate::geometry::{RoundedRect, Shape};
+use crate::geometry::{Rect, RoundedRect, Shape};
 use crate::raster::quantize;
 use crate::scene::Scene;
 use crate::style::Color;
@@ -86,14 +86,18 @@ fn element(shape: &Shape) -> String {
             path(r.outer()),
             path(r.inner())
         ),
+        Shape::Tile(t) => format!(r#"<path d="{}"/>"#, outline(t.rect(), t.radii())),
     }
 }
 
 fn path(rr: RoundedRect) -> String {
-    let r = rr.radius();
-    let (min, max) = (rr.rect().min(), rr.rect().max());
+    outline(rr.rect(), [rr.radius(); 4])
+}
+
+fn outline(rect: Rect, [tl, tr, br, bl]: [f64; 4]) -> String {
+    let (min, max) = (rect.min(), rect.max());
     let [x0, y0, x1, y1] = [min.x, min.y, max.x, max.y];
-    if r <= 0.0 {
+    if [tl, tr, br, bl].iter().all(|r| *r <= 0.0) {
         return format!(
             "M{} {}H{}V{}H{}Z",
             num(x0),
@@ -103,19 +107,25 @@ fn path(rr: RoundedRect) -> String {
             num(x0)
         );
     }
-    let arc = |x: f64, y: f64| format!("A{} {} 0 0 1 {} {}", num(r), num(r), num(x), num(y));
+    let arc = |r: f64, x: f64, y: f64| {
+        if r > 0.0 {
+            format!("A{} {} 0 0 1 {} {}", num(r), num(r), num(x), num(y))
+        } else {
+            String::new()
+        }
+    };
     format!(
         "M{} {}H{}{}V{}{}H{}{}V{}{}Z",
-        num(x0 + r),
+        num(x0 + tl),
         num(y0),
-        num(x1 - r),
-        arc(x1, y0 + r),
-        num(y1 - r),
-        arc(x1 - r, y1),
-        num(x0 + r),
-        arc(x0, y1 - r),
-        num(y0 + r),
-        arc(x0 + r, y0),
+        num(x1 - tr),
+        arc(tr, x1, y0 + tr),
+        num(y1 - br),
+        arc(br, x1 - br, y1),
+        num(x0 + bl),
+        arc(bl, x0, y1 - bl),
+        num(y0 + tl),
+        arc(tl, x0 + tl, y0),
     )
 }
 
@@ -158,6 +168,11 @@ mod tests {
             0.0,
         );
         assert_eq!(path(square), "M1 1H3V3H1Z");
+        let rect = Rect::from_corners(Point::new(0.0, 0.0), Point::new(10.0, 6.0));
+        assert_eq!(
+            outline(rect, [0.0, 2.0, 0.0, 1.0]),
+            "M0 0H8A2 2 0 0 1 10 2V6H1A1 1 0 0 1 0 5V0Z"
+        );
     }
 
     #[test]

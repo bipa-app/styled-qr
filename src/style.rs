@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::geometry::{Disc, Rect, Ring, RoundedRect, Shape};
+use crate::geometry::{Corners, Disc, Rect, RectCorner, Ring, RoundedRect, Shape, Tile};
 use crate::units::{Ratio, Roundness};
 
 pub const MIN_CONTRAST: f64 = 3.0;
@@ -119,11 +119,58 @@ fn check_contrast(dark: Color, light: Color) -> Result<(), Error> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Side {
+    Up,
+    Right,
+    Down,
+    Left,
+}
+
+impl Side {
+    const fn bit(self) -> u8 {
+        match self {
+            Self::Up => 1,
+            Self::Right => 2,
+            Self::Down => 4,
+            Self::Left => 8,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Neighbors(u8);
+
+impl Neighbors {
+    pub const NONE: Self = Self(0);
+
+    #[must_use]
+    pub const fn with(self, side: Side) -> Self {
+        Self(self.0 | side.bit())
+    }
+
+    #[must_use]
+    pub const fn has(self, side: Side) -> bool {
+        self.0 & side.bit() != 0
+    }
+
+    const fn frees(self, corner: RectCorner) -> bool {
+        let (vertical, horizontal) = match corner {
+            RectCorner::TopLeft => (Side::Up, Side::Left),
+            RectCorner::TopRight => (Side::Up, Side::Right),
+            RectCorner::BottomRight => (Side::Down, Side::Right),
+            RectCorner::BottomLeft => (Side::Down, Side::Left),
+        };
+        !self.has(vertical) && !self.has(horizontal)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ModuleShape {
     Square,
     Dot { diameter: Ratio },
     Rounded { size: Ratio, roundness: Roundness },
+    Connected { roundness: Roundness },
 }
 
 impl ModuleShape {
@@ -136,6 +183,11 @@ impl ModuleShape {
 
     #[must_use]
     pub fn shape_in(&self, cell: Rect) -> Option<Shape> {
+        self.shape_with(cell, Neighbors::NONE)
+    }
+
+    #[must_use]
+    pub fn shape_with(&self, cell: Rect, neighbors: Neighbors) -> Option<Shape> {
         let side = cell.width().min(cell.height());
         match *self {
             Self::Square => Some(Shape::Rect(cell)),
@@ -149,13 +201,24 @@ impl ModuleShape {
                     roundness.radius_for(rect.width()),
                 )))
             }
+            Self::Connected { roundness } => {
+                let rounded = RectCorner::ALL
+                    .into_iter()
+                    .filter(|corner| neighbors.frees(*corner))
+                    .fold(Corners::NONE, Corners::with);
+                Some(Shape::Tile(Tile::new(
+                    cell,
+                    roundness.radius_for(side),
+                    rounded,
+                )))
+            }
         }
     }
 
     #[must_use]
     pub const fn min_module_px(&self) -> u32 {
         match self {
-            Self::Square => 1,
+            Self::Square | Self::Connected { .. } => 1,
             Self::Dot { .. } | Self::Rounded { .. } => 3,
         }
     }
@@ -284,6 +347,13 @@ impl Style {
         finder: PatternShape::ROUNDED_FINDER,
         alignment: AlignmentStyle::Modules,
         palette: Self::BRAND.palette,
+    };
+
+    pub const CONNECTED: Self = Self {
+        module: ModuleShape::Connected {
+            roundness: Roundness::or_square(0.5),
+        },
+        ..Self::BRAND
     };
 
     pub const CLASSIC: Self = Self {
@@ -420,6 +490,43 @@ mod tests {
     }
 
     #[test]
+    fn connected_modules_round_only_free_corners() {
+        let cell = Rect::from_origin(Point::new(0.0, 0.0), 10.0, 10.0);
+        let connected = ModuleShape::Connected {
+            roundness: Roundness::or_square(0.6),
+        };
+        let tile = |neighbors| match connected.shape_with(cell, neighbors) {
+            Some(Shape::Tile(tile)) => Some(tile),
+            _ => None,
+        };
+        let alone = tile(Neighbors::NONE).expect("tile");
+        assert_eq!(alone.rounded(), Corners::ALL);
+        assert!(alone.radii().iter().all(|r| (r - 3.0).abs() < 1e-12));
+        let row = tile(Neighbors::NONE.with(Side::Left).with(Side::Right)).expect("tile");
+        assert_eq!(row.rounded(), Corners::NONE);
+        let corner = tile(Neighbors::NONE.with(Side::Up).with(Side::Right)).expect("tile");
+        assert_eq!(corner.rounded(), Corners::NONE.with(RectCorner::BottomLeft));
+        let end = tile(Neighbors::NONE.with(Side::Down)).expect("tile");
+        assert_eq!(
+            end.rounded(),
+            Corners::NONE
+                .with(RectCorner::TopLeft)
+                .with(RectCorner::TopRight)
+        );
+        let up = Neighbors::NONE.with(Side::Up);
+        assert!(up.has(Side::Up) && !up.has(Side::Down));
+        assert_eq!(connected.min_module_px(), 1);
+        assert_eq!(
+            connected.shape_in(cell),
+            connected.shape_with(cell, Neighbors::NONE)
+        );
+        assert_eq!(
+            ModuleShape::DOT.shape_with(cell, Neighbors::NONE.with(Side::Up)),
+            ModuleShape::DOT.shape_in(cell)
+        );
+    }
+
+    #[test]
     fn module_shapes_stay_inside_their_cell() {
         let cell = Rect::from_origin(Point::new(4.0, 8.0), 11.0, 11.0);
         let shapes = [
@@ -427,6 +534,9 @@ mod tests {
             ModuleShape::DOT,
             ModuleShape::Rounded {
                 size: Ratio::or_one(0.9),
+                roundness: Roundness::or_square(0.5),
+            },
+            ModuleShape::Connected {
                 roundness: Roundness::or_square(0.5),
             },
         ];
