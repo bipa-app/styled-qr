@@ -4,15 +4,19 @@ use qrcode::types::QrError;
 use std::num::TryFromIntError;
 use thiserror::Error;
 
+mod budget;
 mod drawing;
 mod error;
 mod geometry;
 mod style;
+mod symbol;
 mod units;
 
+pub use budget::BudgetUsage;
 pub use error::Error;
 pub use geometry::{Disc, Point, Rect, Ring, RoundedRect, Shape};
 pub use style::{AlignmentStyle, Color, MIN_CONTRAST, ModuleShape, Palette, PatternShape, Style};
+pub use symbol::{Corner, EcLevel, Mask, Module, Pos, Role, Symbol, Version};
 pub use units::{
     MAX_CANVAS_PX, MAX_MODULE_PX, MAX_PADDING, MAX_QUIET_ZONE, ModuleSize, Padding, QuietZone,
     Ratio, Roundness,
