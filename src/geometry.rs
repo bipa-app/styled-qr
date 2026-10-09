@@ -379,7 +379,8 @@ fn quadrant_area(r: f64, x: f64, y: f64) -> f64 {
 
 fn circle_primitive(r: f64, u: f64) -> f64 {
     let u = u.clamp(-r, r);
-    f64::midpoint(u * (r * r - u * u).max(0.0).sqrt(), r * r * (u / r).asin())
+    let half_chord = ((r - u) * (r + u)).max(0.0).sqrt();
+    f64::midpoint(u * half_chord, r * r * u.atan2(half_chord))
 }
 
 #[cfg(test)]
@@ -489,6 +490,26 @@ mod tests {
                 assert!(close(c, disc.pixel_coverage(x, 21 - y), 1e-12));
                 assert!(close(c, disc.pixel_coverage(y, x), 1e-12));
             }
+        }
+    }
+
+    #[test]
+    fn disc_coverage_keeps_precision_at_the_disc_ends() {
+        let disc = Shape::Disc(Disc::new(Point::new(7.7, 6.3), 4.7).expect("disc"));
+        let moved = disc.translated(3.0, 5.0);
+        for y in 0..14 {
+            for x in 0..14 {
+                let a = disc.pixel_coverage(x, y);
+                let b = moved.pixel_coverage(x + 3, y + 5);
+                assert!((a - b).abs() < 1e-12, "({x},{y}) {a} {b}");
+            }
+        }
+        let r = 2.5;
+        for step in 0..=100u32 {
+            let u = -r + f64::from(step) * 0.05;
+            let expected =
+                f64::midpoint(u * (r * r - u * u).max(0.0).sqrt(), r * r * (u / r).asin());
+            assert!((circle_primitive(r, u) - expected).abs() < 1e-9);
         }
     }
 
