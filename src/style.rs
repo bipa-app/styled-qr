@@ -40,14 +40,7 @@ impl Color {
 
     #[must_use]
     pub fn relative_luminance(self) -> f64 {
-        let linear = |c: u8| {
-            let s = f64::from(c) / 255.0;
-            if s <= 0.040_45 {
-                s / 12.92
-            } else {
-                ((s + 0.055) / 1.055).powf(2.4)
-            }
-        };
+        let linear = |c: u8| srgb_to_linear(f64::from(c) / 255.0);
         let c = self.over_white();
         0.2126 * linear(c.r) + 0.7152 * linear(c.g) + 0.0722 * linear(c.b)
     }
@@ -56,6 +49,45 @@ impl Color {
     pub fn contrast_ratio(self, other: Self) -> f64 {
         let (a, b) = (self.relative_luminance(), other.relative_luminance());
         (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+}
+
+fn srgb_to_linear(value: f64) -> f64 {
+    if value <= 0.040_45 {
+        value / 12.92
+    } else {
+        ((value + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+fn linear_to_srgb(value: f64) -> f64 {
+    if value <= 0.003_130_8 {
+        value * 12.92
+    } else {
+        1.055 * value.powf(1.0 / 2.4) - 0.055
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Blending {
+    #[default]
+    Srgb,
+    Linear,
+}
+
+impl Blending {
+    pub(crate) fn decode(self, value: f64) -> f64 {
+        match self {
+            Self::Srgb => value,
+            Self::Linear => srgb_to_linear(value),
+        }
+    }
+
+    pub(crate) fn encode(self, value: f64) -> f64 {
+        match self {
+            Self::Srgb => value,
+            Self::Linear => linear_to_srgb(value),
+        }
     }
 }
 
@@ -328,6 +360,7 @@ pub struct Style {
     pub finder: PatternShape,
     pub alignment: AlignmentStyle,
     pub palette: Palette,
+    pub blending: Blending,
 }
 
 impl Style {
@@ -340,6 +373,7 @@ impl Style {
             light: Color::WHITE,
             finder: Color::BLACK,
         },
+        blending: Blending::Srgb,
     };
 
     pub const LEGACY: Self = Self {
@@ -347,6 +381,7 @@ impl Style {
         finder: PatternShape::ROUNDED_FINDER,
         alignment: AlignmentStyle::Modules,
         palette: Self::BRAND.palette,
+        blending: Blending::Srgb,
     };
 
     pub const CONNECTED: Self = Self {
@@ -361,6 +396,7 @@ impl Style {
         finder: PatternShape::SQUARE_FINDER,
         alignment: AlignmentStyle::Modules,
         palette: Self::BRAND.palette,
+        blending: Blending::Srgb,
     };
 }
 
@@ -388,6 +424,23 @@ mod tests {
             Color::rgba(0, 0, 0, 128).over_white(),
             Color::rgb(127, 127, 127)
         );
+    }
+
+    #[test]
+    fn blending_transfer_functions_round_trip() {
+        for step in 0..=100u32 {
+            let value = f64::from(step) / 100.0;
+            for blending in [Blending::Srgb, Blending::Linear] {
+                let back = blending.encode(blending.decode(value));
+                assert!((back - value).abs() < 1e-9, "{blending:?} {value}");
+            }
+        }
+        assert!((Blending::Linear.decode(0.5) - 0.214_041_140_5).abs() < 1e-9);
+        assert!((Blending::Linear.encode(0.5) - 0.735_356_983_1).abs() < 1e-9);
+        assert!((Blending::Linear.decode(0.02) - 0.02 / 12.92).abs() < 1e-12);
+        assert!((Blending::Linear.encode(0.002) - 0.002 * 12.92).abs() < 1e-12);
+        assert!((Blending::Srgb.decode(0.3) - 0.3).abs() < 1e-12);
+        assert_eq!(Style::default().blending, Blending::Srgb);
     }
 
     #[test]

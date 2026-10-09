@@ -673,3 +673,31 @@ fn logo_plate_keeps_the_code_readable() {
         assert_eq!(decode(&image), vec![data]);
     }
 }
+
+#[test]
+fn linear_blending_lightens_partial_edges_only() {
+    let symbol = Symbol::encode(b"gamma", EcLevel::H).expect("encode");
+    let edge =
+        qrcoder::Rect::from_corners(qrcoder::Point::new(2.0, 2.0), qrcoder::Point::new(4.5, 6.0));
+    let render = |blending| {
+        let style = Style {
+            blending,
+            ..Style::BRAND
+        };
+        let mut scene = compose(&symbol, layout(10, 4), style, None);
+        assert_eq!(scene.blending(), blending);
+        scene.push_layer(qrcoder::Layer {
+            color: Color::BLACK,
+            shapes: vec![Shape::Rect(edge)],
+        });
+        scene.to_image()
+    };
+    let srgb = render(qrcoder::Blending::Srgb);
+    let linear = render(qrcoder::Blending::Linear);
+    assert_eq!(*srgb.get_pixel(3, 3), Rgba([0, 0, 0, 255]));
+    assert_eq!(*linear.get_pixel(3, 3), Rgba([0, 0, 0, 255]));
+    assert_eq!(*srgb.get_pixel(4, 3), Rgba([128, 128, 128, 255]));
+    assert_eq!(*linear.get_pixel(4, 3), Rgba([188, 188, 188, 255]));
+    assert_eq!(*linear.get_pixel(5, 3), Rgba([255, 255, 255, 255]));
+    assert_eq!(decode(&linear), vec!["gamma".to_owned()]);
+}

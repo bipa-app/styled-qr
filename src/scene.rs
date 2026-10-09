@@ -7,7 +7,7 @@ use crate::budget::BudgetUsage;
 use crate::error::Error;
 use crate::geometry::{Point, Rect, Shape};
 use crate::logo::{Logo, PlacedLogo};
-use crate::style::{AlignmentStyle, Color, Neighbors, Side, Style};
+use crate::style::{AlignmentStyle, Blending, Color, Neighbors, Side, Style};
 use crate::symbol::{Pos, Role, Symbol};
 use crate::units::{MAX_CANVAS_PX, MAX_MODULE_PX, ModuleSize, QuietZone};
 use crate::{raster, svg};
@@ -75,6 +75,7 @@ pub struct Layer {
 pub struct Scene {
     size: u32,
     background: Color,
+    blending: Blending,
     layers: Vec<Layer>,
     logo: Option<PlacedLogo>,
     budget: BudgetUsage,
@@ -89,6 +90,11 @@ impl Scene {
     #[must_use]
     pub const fn background(&self) -> Color {
         self.background
+    }
+
+    #[must_use]
+    pub const fn blending(&self) -> Blending {
+        self.blending
     }
 
     #[must_use]
@@ -190,6 +196,7 @@ impl<'a> Composer<'a> {
         Ok(Scene {
             size,
             background: self.style.palette.light(),
+            blending: self.style.blending,
             layers: self.layers(&hidden),
             logo: placed,
             budget,

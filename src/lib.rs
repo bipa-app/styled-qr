@@ -33,7 +33,8 @@ pub use geometry::{Corners, Disc, Point, Rect, RectCorner, Ring, RoundedRect, Sh
 pub use logo::{Clearance, Logo, LogoSize, OverBudget, Plate};
 pub use scene::{Composer, Layer, Layout, Scene};
 pub use style::{
-    AlignmentStyle, Color, MIN_CONTRAST, ModuleShape, Neighbors, Palette, PatternShape, Side, Style,
+    AlignmentStyle, Blending, Color, MIN_CONTRAST, ModuleShape, Neighbors, Palette, PatternShape,
+    Side, Style,
 };
 pub use symbol::{Corner, EcLevel, Mask, Module, Pos, Role, Symbol, Version};
 pub use units::{
