@@ -1,19 +1,21 @@
 use image::{DynamicImage, GrayImage, Rgba, RgbaImage};
 use qrcoder::{
-    AlignmentStyle, Clearance, Color, Composer, EcLevel, Error, Layout, Logo, LogoSize, ModuleSize,
-    OverBudget, Padding, Palette, Pos, QuietZone, Ratio, Role, Scene, Shape, Style, Symbol,
-    Version,
+    AlignmentStyle, Builder, Clearance, Color, Composer, EcLevel, Error, Layout, Logo, LogoSize,
+    ModuleSize, OverBudget, Padding, Palette, Pos, QuietZone, Ratio, Role, Scene, Shape, Style,
+    Symbol, Version,
 };
 
 #[derive(Clone, Copy)]
 enum SampleLogo {
     Coin,
+    Tall,
     Sparse,
 }
 
 fn load(kind: SampleLogo) -> DynamicImage {
     let (w, h) = match kind {
         SampleLogo::Coin => (400, 400),
+        SampleLogo::Tall => (392, 398),
         SampleLogo::Sparse => (250, 250),
     };
     let image = RgbaImage::from_fn(w, h, |px, py| {
@@ -22,8 +24,8 @@ fn load(kind: SampleLogo) -> DynamicImage {
         let radius = dx.hypot(dy);
         match kind {
             SampleLogo::Coin if (dx - 0.3).hypot(dy - 0.3) < 0.15 => Rgba([40, 120, 250, 255]),
-            SampleLogo::Coin if radius < 0.12 => Rgba([255, 255, 255, 255]),
-            SampleLogo::Coin if radius < 0.48 => Rgba([0, 0, 0, 255]),
+            SampleLogo::Coin | SampleLogo::Tall if radius < 0.12 => Rgba([255, 255, 255, 255]),
+            SampleLogo::Coin | SampleLogo::Tall if radius < 0.48 => Rgba([0, 0, 0, 255]),
             SampleLogo::Sparse if (radius - 0.3).abs() < 0.06 => Rgba([200, 40, 120, 255]),
             _ => Rgba([255, 0, 0, 0]),
         }
@@ -70,6 +72,79 @@ fn compose(symbol: &Symbol, layout: Layout, style: Style, logo: Option<&Logo>) -
     logo.map_or(composer, |l| composer.logo(l))
         .compose()
         .expect("compose")
+}
+
+#[test]
+fn production_configurations_decode() {
+    let app_logos = [
+        load(SampleLogo::Coin),
+        load(SampleLogo::Tall),
+        load(SampleLogo::Sparse),
+    ];
+    for len in [1usize, 20, 42, 120, 300] {
+        let data = payload(len);
+        for logo in &app_logos {
+            let image = Builder::new(data.as_bytes(), logo)
+                .with_module_width(22)
+                .build()
+                .expect("app build")
+                .into_rgba8();
+            assert_eq!(decode(&image), vec![data.clone()], "app len {len}");
+        }
+        let site = Builder::new(data.as_bytes(), &app_logos[2])
+            .with_quiet_zone(2)
+            .with_logo_quiet_zone(2)
+            .build()
+            .expect("site build")
+            .into_rgba8();
+        assert_eq!(decode(&site), vec![data.clone()], "site len {len}");
+    }
+}
+
+#[test]
+fn builder_defaults_match_the_legacy_geometry() {
+    let data = payload(42);
+    let logo = load(SampleLogo::Coin);
+    let image = Builder::new(data.as_bytes(), &logo).build().expect("build");
+    let symbol = Symbol::encode(data.as_bytes(), EcLevel::H).expect("encode");
+    assert_eq!(image.width(), (u32::from(symbol.width()) + 8) * 11);
+    assert_eq!(image.width(), image.height());
+}
+
+#[test]
+fn builder_rejects_invalid_configuration_instead_of_panicking() {
+    let logo = load(SampleLogo::Coin);
+    let data = payload(30);
+    let build = |m: usize, q: usize, l: usize| {
+        Builder::new(data.as_bytes(), &logo)
+            .with_module_width(m)
+            .with_quiet_zone(q)
+            .with_logo_quiet_zone(l)
+            .build()
+    };
+    assert!(matches!(build(0, 4, 1), Err(Error::ModuleSize { .. })));
+    assert!(matches!(
+        build(2, 4, 1),
+        Err(Error::ModuleTooSmall { px: 2, min: 3 })
+    ));
+    assert!(matches!(build(1000, 4, 1), Err(Error::ModuleSize { .. })));
+    assert!(matches!(build(22, 0, 1), Err(Error::QuietZone { .. })));
+    let huge = usize::try_from(i32::MAX).expect("i32 fits in usize");
+    assert!(matches!(build(22, huge, 1), Err(Error::QuietZone { .. })));
+    assert!(matches!(build(22, 4, 100), Err(Error::Padding { .. })));
+    assert!(matches!(
+        build(256, 64, 1),
+        Err(Error::CanvasTooLarge { .. })
+    ));
+    assert!(matches!(
+        Builder::new(&[b'x'; 4000], &logo).build(),
+        Err(Error::Encode(_))
+    ));
+    let empty = RgbaImage::new(0, 0);
+    assert!(matches!(
+        Builder::new(b"x", &empty).build(),
+        Err(Error::EmptyLogo)
+    ));
 }
 
 #[test]
