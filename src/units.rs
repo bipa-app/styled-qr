@@ -12,13 +12,18 @@ pub struct ModuleSize(NonZeroU32);
 
 impl ModuleSize {
     pub fn new(px: u32) -> Result<Self, Error> {
-        NonZeroU32::new(px)
-            .filter(|px| px.get() <= MAX_MODULE_PX)
-            .map(Self)
-            .ok_or(Error::ModuleSize {
-                px: u64::from(px),
-                max: MAX_MODULE_PX,
-            })
+        Self::checked(px).ok_or(Error::ModuleSize {
+            px: u64::from(px),
+            max: MAX_MODULE_PX,
+        })
+    }
+
+    #[must_use]
+    pub const fn checked(px: u32) -> Option<Self> {
+        match NonZeroU32::new(px) {
+            Some(px) if px.get() <= MAX_MODULE_PX => Some(Self(px)),
+            Some(_) | None => None,
+        }
     }
 
     #[must_use]
@@ -34,14 +39,18 @@ impl QuietZone {
     pub const STANDARD: Self = Self(4);
 
     pub fn new(modules: u32) -> Result<Self, Error> {
-        u8::try_from(modules)
-            .ok()
-            .filter(|m| (1..=MAX_QUIET_ZONE).contains(m))
-            .map(Self)
-            .ok_or(Error::QuietZone {
-                modules: u64::from(modules),
-                max: MAX_QUIET_ZONE,
-            })
+        Self::checked(modules).ok_or(Error::QuietZone {
+            modules: u64::from(modules),
+            max: MAX_QUIET_ZONE,
+        })
+    }
+
+    #[must_use]
+    pub const fn checked(modules: u32) -> Option<Self> {
+        match modules.to_le_bytes() {
+            [low @ 1..=MAX_QUIET_ZONE, 0, 0, 0] => Some(Self(low)),
+            _ => None,
+        }
     }
 
     #[must_use]
@@ -61,14 +70,18 @@ pub struct Padding(u8);
 
 impl Padding {
     pub fn new(modules: u32) -> Result<Self, Error> {
-        u8::try_from(modules)
-            .ok()
-            .filter(|m| *m <= MAX_PADDING)
-            .map(Self)
-            .ok_or(Error::Padding {
-                modules: u64::from(modules),
-                max: MAX_PADDING,
-            })
+        Self::checked(modules).ok_or(Error::Padding {
+            modules: u64::from(modules),
+            max: MAX_PADDING,
+        })
+    }
+
+    #[must_use]
+    pub const fn checked(modules: u32) -> Option<Self> {
+        match modules.to_le_bytes() {
+            [low @ 0..=MAX_PADDING, 0, 0, 0] => Some(Self(low)),
+            _ => None,
+        }
     }
 
     #[must_use]
@@ -191,6 +204,8 @@ mod tests {
         assert!(QuietZone::new(0).is_err());
         assert!(QuietZone::new(u32::from(MAX_QUIET_ZONE) + 1).is_err());
         assert!(QuietZone::new(300).is_err());
+        assert!(QuietZone::new(u32::MAX).is_err());
+        assert!(QuietZone::new(u32::from(MAX_QUIET_ZONE) + 256).is_err());
         assert_eq!(QuietZone::new(2).map(QuietZone::modules).ok(), Some(2));
         assert_eq!(QuietZone::default().modules(), 4);
     }
@@ -206,6 +221,10 @@ mod tests {
         );
         assert!(Padding::new(u32::from(MAX_PADDING) + 1).is_err());
         assert!(Padding::new(1000).is_err());
+        assert!(Padding::new(256).is_err());
+        assert_eq!(Padding::checked(2).map(Padding::modules), Some(2));
+        assert_eq!(QuietZone::checked(4), Some(QuietZone::STANDARD));
+        assert_eq!(ModuleSize::checked(22).map(ModuleSize::px), Some(22));
     }
 
     #[test]
