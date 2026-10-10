@@ -162,6 +162,21 @@ pub enum Role {
     Data,
 }
 
+impl Role {
+    #[must_use]
+    pub const fn carries_data(self) -> bool {
+        match self {
+            Self::Data => true,
+            Self::Finder
+            | Self::Separator
+            | Self::Timing
+            | Self::Alignment
+            | Self::FormatInfo
+            | Self::VersionInfo => false,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Module {
     pub dark: bool,
@@ -241,7 +256,7 @@ impl Symbol {
                 role,
             })
             .collect();
-        let is_data: Vec<bool> = modules.iter().map(|m| m.role == Role::Data).collect();
+        let is_data: Vec<bool> = modules.iter().map(|m| m.role.carries_data()).collect();
         let codewords =
             CodewordLayout::compute(version, ec_level, &raw, ec_codewords.len(), &is_data)?;
         Ok(Self {
@@ -334,7 +349,7 @@ fn masked_colors(
     let flipped: Vec<(Pos, bool)> = roles
         .iter()
         .zip(unmasked.iter().zip(&best))
-        .filter(|((_, role), _)| *role == Role::Data)
+        .filter(|((_, role), _)| role.carries_data())
         .map(|((pos, _), (before, after))| (*pos, before != after))
         .collect();
     let chosen = Mask::ALL

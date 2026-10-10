@@ -49,7 +49,7 @@ impl BudgetUsage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::symbol::{EcLevel, Role};
+    use crate::symbol::EcLevel;
 
     #[test]
     fn counts_distinct_codewords_in_the_worst_block() {
@@ -67,7 +67,7 @@ mod tests {
         assert_eq!(usage.correctable(), symbol.correctable_per_block());
         let functional: Vec<Pos> = symbol
             .modules()
-            .filter(|(_, m)| m.role != Role::Data)
+            .filter(|(_, m)| !m.role.carries_data())
             .map(|(p, _)| p)
             .collect();
         assert_eq!(BudgetUsage::of(&symbol, functional).worst_block(), 0);

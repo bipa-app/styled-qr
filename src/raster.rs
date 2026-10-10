@@ -154,11 +154,16 @@ fn composite_image(
 }
 
 fn convert(Rgba([r, g, b, a]): Rgba<f64>, blending: Blending) -> Rgba<f64> {
-    if a <= 0.0 || blending == Blending::Srgb {
-        return Rgba([r, g, b, a]);
+    match blending {
+        Blending::Srgb => Rgba([r, g, b, a]),
+        Blending::Linear => {
+            if a <= 0.0 {
+                return Rgba([r, g, b, a]);
+            }
+            let [r, g, b] = [r, g, b].map(|c| blending.decode((c / a).clamp(0.0, 1.0)) * a);
+            Rgba([r, g, b, a])
+        }
     }
-    let [r, g, b] = [r, g, b].map(|c| blending.decode((c / a).clamp(0.0, 1.0)) * a);
-    Rgba([r, g, b, a])
 }
 
 fn over(dst: &mut Rgba<f64>, src: Rgba<f64>, coverage: f64) {

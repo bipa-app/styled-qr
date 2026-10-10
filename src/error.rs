@@ -1,7 +1,6 @@
 use qrcode::types::QrError;
 
 #[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
 pub enum Error {
     #[error("failed to encode data: {0}")]
     Encode(QrError),

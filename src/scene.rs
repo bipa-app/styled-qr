@@ -276,7 +276,9 @@ impl<'a> Composer<'a> {
             let b = shape.bounds();
             match shape {
                 Shape::Disc(disc) => disc.radius(),
-                _ => center.distance(b.max()),
+                Shape::Rect(_) | Shape::RoundedRect(_) | Shape::Ring(_) | Shape::Tile(_) => {
+                    center.distance(b.max())
+                }
             }
         })
     }
