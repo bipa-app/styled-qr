@@ -318,7 +318,8 @@ fn footprint_clearance_hides_fewer_modules_than_bounds() {
 
 #[test]
 fn oversized_logo_is_rejected_or_shrunk() {
-    let symbol = Symbol::encode(b"tiny", EcLevel::H).expect("encode");
+    let data = payload(60);
+    let symbol = Symbol::encode(data.as_bytes(), EcLevel::H).expect("encode");
     let block = RgbaImage::from_pixel(64, 64, Rgba([0, 0, 0, 255]));
     let big = Logo::new(&block)
         .expect("logo")
@@ -335,9 +336,9 @@ fn oversized_logo_is_rejected_or_shrunk() {
         .compose()
         .expect("shrunk");
     let side = scene.logo_rect().expect("logo").width();
-    assert!(side < 0.45 * 21.0 * 10.0);
+    assert!(side < 0.45 * f64::from(symbol.width()) * 10.0);
     assert!(scene.error_budget_usage().fraction() <= Logo::DEFAULT_ERROR_BUDGET.get());
-    assert_eq!(decode(&scene.to_image()), vec!["tiny".to_owned()]);
+    assert_eq!(decode(&scene.to_image()), vec![data]);
 }
 
 #[test]

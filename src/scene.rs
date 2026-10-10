@@ -14,6 +14,7 @@ use crate::{raster, svg};
 
 const FINDER_SPAN: u8 = 7;
 const ALIGNMENT_SPAN: u8 = 5;
+const FORMAT_SPAN: u8 = FINDER_SPAN + 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Layout {
@@ -189,7 +190,9 @@ impl<'a> Composer<'a> {
     fn compose_at(&self, size: u32, logo_scale: f64) -> Result<Scene, Error> {
         let placed = self.place_logo(size, logo_scale)?;
         let hidden = self.hidden_modules(placed.as_ref());
-        let budget = BudgetUsage::of(self.symbol, self.misread_modules(&hidden, placed.as_ref()));
+        let misread = self.misread_modules(&hidden, placed.as_ref());
+        check_function_patterns(self.symbol, &misread)?;
+        let budget = BudgetUsage::of(self.symbol, misread);
         if let Some(logo) = self.logo {
             check_budget(budget, logo)?;
         }
@@ -197,35 +200,44 @@ impl<'a> Composer<'a> {
             size,
             background: self.style.palette.light(),
             blending: self.style.blending,
-            layers: self.layers(&hidden),
+            layers: self.layers(&hidden)?,
             logo: placed,
             budget,
         })
     }
 
-    fn layers(&self, hidden: &BTreeSet<Pos>) -> Vec<Layer> {
+    fn layers(&self, hidden: &BTreeSet<Pos>) -> Result<Vec<Layer>, Error> {
         let palette = self.style.palette;
-        let mut layers = vec![
-            Layer {
-                color: palette.dark(),
-                shapes: self.module_shapes(hidden),
-            },
-            Layer {
-                color: palette.finder(),
-                shapes: self.finder_shapes(),
-            },
-        ];
-        if let AlignmentStyle::Pattern(pattern) = self.style.alignment {
-            let shapes = self
-                .visible_alignments(hidden)
-                .flat_map(|origin| pattern.shapes_in(self.layout.area(origin, ALIGNMENT_SPAN)))
-                .collect();
-            layers.push(Layer {
-                color: palette.dark(),
-                shapes,
-            });
-        }
-        layers
+        let finder = Layer {
+            color: palette.finder(),
+            shapes: self.finder_shapes()?,
+        };
+        let (patterned, alignment) = match self.style.alignment {
+            AlignmentStyle::Pattern(pattern) => {
+                let origins: Vec<Pos> = self.visible_alignments(hidden).collect();
+                let mut shapes = Vec::new();
+                for origin in &origins {
+                    shapes.extend(pattern.shapes_in(self.layout.area(*origin, ALIGNMENT_SPAN))?);
+                }
+                let patterned = origins
+                    .iter()
+                    .flat_map(|o| span(*o, ALIGNMENT_SPAN))
+                    .collect();
+                let layer = Layer {
+                    color: palette.dark(),
+                    shapes,
+                };
+                (patterned, Some(layer))
+            }
+            AlignmentStyle::Modules => (BTreeSet::new(), None),
+        };
+        let modules = Layer {
+            color: palette.dark(),
+            shapes: self.module_shapes(hidden, &patterned),
+        };
+        let mut layers = vec![modules, finder];
+        layers.extend(alignment);
+        Ok(layers)
     }
 
     fn misread_modules(&self, hidden: &BTreeSet<Pos>, placed: Option<&PlacedLogo>) -> Vec<Pos> {
@@ -283,15 +295,20 @@ impl<'a> Composer<'a> {
         })
     }
 
-    fn module_shapes(&self, hidden: &BTreeSet<Pos>) -> Vec<Shape> {
-        let pattern_alignment = matches!(self.style.alignment, AlignmentStyle::Pattern(_));
+    fn module_shapes(&self, hidden: &BTreeSet<Pos>, patterned: &BTreeSet<Pos>) -> Vec<Shape> {
         let drawn = |x: Option<u8>, y: Option<u8>| {
             x.zip(y).map(|(x, y)| Pos::new(x, y)).is_some_and(|pos| {
                 self.symbol.module(pos).is_some_and(|module| {
-                    module.dark
-                        && module.role != Role::Finder
-                        && !(pattern_alignment && module.role == Role::Alignment)
-                        && !hidden.contains(&pos)
+                    let own_shape = match module.role {
+                        Role::Finder => true,
+                        Role::Alignment => patterned.contains(&pos),
+                        Role::Separator
+                        | Role::Timing
+                        | Role::FormatInfo
+                        | Role::VersionInfo
+                        | Role::Data => false,
+                    };
+                    module.dark && !own_shape && !hidden.contains(&pos)
                 })
             })
         };
@@ -316,16 +333,16 @@ impl<'a> Composer<'a> {
             .collect()
     }
 
-    fn finder_shapes(&self) -> Vec<Shape> {
-        self.symbol
-            .finders()
-            .iter()
-            .flat_map(|(_, origin)| {
+    fn finder_shapes(&self) -> Result<Vec<Shape>, Error> {
+        let mut shapes = Vec::new();
+        for (_, origin) in self.symbol.finders() {
+            shapes.extend(
                 self.style
                     .finder
-                    .shapes_in(self.layout.area(*origin, FINDER_SPAN))
-            })
-            .collect()
+                    .shapes_in(self.layout.area(origin, FINDER_SPAN))?,
+            );
+        }
+        Ok(shapes)
     }
 
     fn visible_alignments<'b>(
@@ -336,12 +353,37 @@ impl<'a> Composer<'a> {
             .alignment_centers()
             .into_iter()
             .map(|c| Pos::new(c.x - ALIGNMENT_SPAN / 2, c.y - ALIGNMENT_SPAN / 2))
-            .filter(move |origin| {
-                !hidden.iter().any(|h| {
-                    (origin.x..origin.x + ALIGNMENT_SPAN).contains(&h.x)
-                        && (origin.y..origin.y + ALIGNMENT_SPAN).contains(&h.y)
-                })
-            })
+            .filter(move |origin| !span(*origin, ALIGNMENT_SPAN).any(|pos| hidden.contains(&pos)))
+    }
+}
+
+fn span(origin: Pos, side: u8) -> impl Iterator<Item = Pos> {
+    (origin.y..origin.y + side)
+        .flat_map(move |y| (origin.x..origin.x + side).map(move |x| Pos::new(x, y)))
+}
+
+fn check_function_patterns(symbol: &Symbol, misread: &[Pos]) -> Result<(), Error> {
+    let mut format_copies = [false; 2];
+    let mut version_copies = [false; 2];
+    for pos in misread {
+        let Some(module) = symbol.module(*pos) else {
+            continue;
+        };
+        match module.role {
+            Role::Data | Role::Alignment => {}
+            Role::Finder | Role::Separator | Role::Timing => {
+                return Err(Error::LogoHidesFunctionPattern(module.role));
+            }
+            Role::FormatInfo => {
+                format_copies[usize::from(pos.x.max(pos.y) >= FORMAT_SPAN)] = true;
+            }
+            Role::VersionInfo => version_copies[usize::from(pos.y < pos.x)] = true,
+        }
+    }
+    match (format_copies, version_copies) {
+        ([true, true], _) => Err(Error::LogoHidesFunctionPattern(Role::FormatInfo)),
+        (_, [true, true]) => Err(Error::LogoHidesFunctionPattern(Role::VersionInfo)),
+        _ => Ok(()),
     }
 }
 
@@ -353,5 +395,138 @@ fn check_budget(budget: BudgetUsage, logo: &Logo) -> Result<(), Error> {
             used: budget.worst_block(),
             budget: budget.correctable(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use image::Rgba;
+
+    use super::*;
+    use crate::logo::{Clearance, LogoSize, OverBudget};
+    use crate::style::PatternShape;
+    use crate::symbol::{EcLevel, Version};
+    use crate::units::{Padding, Ratio, Roundness};
+
+    fn square_logo() -> Logo {
+        Logo::new(&RgbaImage::from_pixel(8, 8, Rgba([0, 0, 0, 255]))).expect("logo")
+    }
+
+    fn layout(px: u32, quiet: u32) -> Layout {
+        Layout::new(
+            ModuleSize::new(px).expect("module size"),
+            QuietZone::new(quiet).expect("quiet zone"),
+        )
+    }
+
+    #[test]
+    fn square_logos_fit_every_version_when_every_hidden_module_is_misread() {
+        for (px, quiet, padding) in [(11, 2, 2), (22, 4, 1)] {
+            let logo = square_logo()
+                .with_clearance(Clearance::Bounds)
+                .with_padding(Padding::new(padding).expect("padding"));
+            let layout = layout(px, quiet);
+            for number in 1..=40 {
+                let version = Version::new(number).expect("version");
+                let symbol = Symbol::encode_with(b"x", EcLevel::H, version).expect("encode");
+                let composer = Composer::new(&symbol, layout).logo(&logo);
+                let size = layout.canvas_px(&symbol).expect("canvas");
+                let fits = |scale: f64| {
+                    let placed = composer.place_logo(size, scale).expect("placed");
+                    let hidden: Vec<Pos> = composer
+                        .hidden_modules(placed.as_ref())
+                        .into_iter()
+                        .collect();
+                    check_function_patterns(&symbol, &hidden).is_ok()
+                        && BudgetUsage::of(&symbol, hidden).fraction() <= logo.error_budget().get()
+                };
+                let scales = std::iter::once(&1.0).chain(logo.over_budget().fallback_scales());
+                assert!(scales.copied().any(fits), "{px}px v{number}");
+            }
+        }
+    }
+
+    #[test]
+    fn logos_that_hide_function_patterns_are_refused() {
+        let symbol = Symbol::encode(b"x", EcLevel::H).expect("encode");
+        let logo = square_logo()
+            .with_size(LogoSize::Width(Ratio::new(0.9).expect("ratio")))
+            .with_over_budget(OverBudget::Reject);
+        let scene = Composer::new(&symbol, layout(10, 4)).logo(&logo).compose();
+        assert!(matches!(scene, Err(Error::LogoHidesFunctionPattern(_))));
+    }
+
+    #[test]
+    fn one_damaged_copy_of_the_format_information_is_accepted() {
+        let symbol = Symbol::encode(b"x", EcLevel::H).expect("encode");
+        let info: Vec<Pos> = symbol
+            .modules()
+            .filter(|(_, module)| module.role == Role::FormatInfo)
+            .map(|(pos, _)| pos)
+            .collect();
+        let (near, far): (Vec<Pos>, Vec<Pos>) =
+            info.iter().partition(|pos| pos.x.max(pos.y) < FORMAT_SPAN);
+        assert_eq!((near.len(), far.len()), (15, 16));
+        assert!(check_function_patterns(&symbol, &near).is_ok());
+        assert!(check_function_patterns(&symbol, &far).is_ok());
+        assert!(matches!(
+            check_function_patterns(&symbol, &[near[0], far[0]]),
+            Err(Error::LogoHidesFunctionPattern(Role::FormatInfo))
+        ));
+        let version = Symbol::encode_with(b"x", EcLevel::H, Version::new(7).expect("version"))
+            .expect("encode");
+        let (right, left): (Vec<Pos>, Vec<Pos>) = version
+            .modules()
+            .filter(|(_, module)| module.role == Role::VersionInfo)
+            .map(|(pos, _)| pos)
+            .partition(|pos| pos.y < pos.x);
+        assert_eq!((right.len(), left.len()), (18, 18));
+        assert!(check_function_patterns(&version, &right).is_ok());
+        assert!(matches!(
+            check_function_patterns(&version, &[right[0], left[0]]),
+            Err(Error::LogoHidesFunctionPattern(Role::VersionInfo))
+        ));
+        let timing = Pos::new(10, 6);
+        assert_eq!(symbol.module(timing).map(|m| m.role), Some(Role::Timing));
+        assert!(matches!(
+            check_function_patterns(&symbol, &[timing]),
+            Err(Error::LogoHidesFunctionPattern(Role::Timing))
+        ));
+    }
+
+    #[test]
+    fn visible_modules_of_a_partly_hidden_alignment_pattern_are_drawn() {
+        let symbol = Symbol::encode_with(b"x", EcLevel::H, Version::new(2).expect("version"))
+            .expect("encode");
+        let composer = Composer::new(&symbol, layout(10, 4));
+        let origin = Pos::new(16, 16);
+        let area = composer.layout.area(origin, ALIGNMENT_SPAN);
+        let in_area = |hidden: &BTreeSet<Pos>| {
+            let layers = composer.layers(hidden).expect("layers");
+            layers[0]
+                .shapes
+                .iter()
+                .filter(|shape| area.distance_to(shape.bounds().center()) <= 0.0)
+                .count()
+        };
+        assert_eq!(in_area(&BTreeSet::new()), 0);
+        let hidden = BTreeSet::from([origin]);
+        let dark = span(origin, ALIGNMENT_SPAN)
+            .filter(|pos| !hidden.contains(pos))
+            .filter(|pos| symbol.module(*pos).is_some_and(|m| m.dark))
+            .count();
+        assert_eq!(dark, 16);
+        assert_eq!(in_area(&hidden), dark);
+    }
+
+    #[test]
+    fn finder_shapes_that_do_not_nest_are_refused() {
+        let symbol = Symbol::encode(b"x", EcLevel::H).expect("encode");
+        let style = Style {
+            finder: PatternShape::SQUARE_FINDER.with_outer_corner(Roundness::CIRCLE),
+            ..Style::BRAND
+        };
+        let scene = Composer::new(&symbol, layout(10, 4)).style(style).compose();
+        assert!(matches!(scene, Err(Error::PatternProportions)));
     }
 }

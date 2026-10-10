@@ -219,7 +219,7 @@ impl RoundedRect {
         straight_area + corner_area
     }
 
-    fn contains(self, inner: Self) -> bool {
+    pub(crate) fn contains(self, inner: Self) -> bool {
         let (o, i) = (self.core(), inner.core());
         let dcx = i.center().x - o.center().x;
         let dcy = i.center().y - o.center().y;

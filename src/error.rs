@@ -1,5 +1,7 @@
 use qrcode::types::QrError;
 
+use crate::symbol::Role;
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("failed to encode data: {0}")]
@@ -16,7 +18,9 @@ pub enum Error {
     Ratio(f64),
     #[error("roundness must be finite and within [0, 1], got {0}")]
     Roundness(f64),
-    #[error("pattern proportions must satisfy stone < hole")]
+    #[error(
+        "pattern shapes must nest: the stone inside the hole, the hole inside the outer square"
+    )]
     PatternProportions,
     #[error("canvas of {px}px exceeds the {max}px limit")]
     CanvasTooLarge { px: u64, max: u32 },
@@ -24,6 +28,8 @@ pub enum Error {
     ModuleTooSmall { px: u32, min: u32 },
     #[error("contrast ratio {ratio:.2} between dark and light colors is below {min:.2}")]
     InsufficientContrast { ratio: f64, min: f64 },
+    #[error("logo makes {0:?} modules unreadable, and error correction cannot restore them")]
+    LogoHidesFunctionPattern(Role),
     #[error("logo hides {used} codewords of a block that corrects at most {budget}")]
     LogoExceedsErrorBudget { used: u16, budget: u16 },
     #[error("logo image has no pixels")]

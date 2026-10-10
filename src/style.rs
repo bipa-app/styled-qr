@@ -300,7 +300,7 @@ impl PatternShape {
     }
 
     pub fn new(hole: Ratio, stone: Ratio, corner: Roundness) -> Result<Self, Error> {
-        if stone < hole {
+        if stone < hole && hole < Ratio::ONE {
             Ok(Self::uniform(hole, stone, corner))
         } else {
             Err(Error::PatternProportions)
@@ -331,8 +331,7 @@ impl PatternShape {
         }
     }
 
-    #[must_use]
-    pub fn shapes_in(&self, area: Rect) -> [Shape; 2] {
+    pub fn shapes_in(&self, area: Rect) -> Result<[Shape; 2], Error> {
         let center = area.center();
         let side = area.width().min(area.height());
         let square = |fraction: f64, corner: Roundness| {
@@ -342,8 +341,10 @@ impl PatternShape {
         let outer = square(1.0, self.outer_corner);
         let hole = square(self.hole.get(), self.hole_corner);
         let stone = square(self.stone.get(), self.stone_corner);
-        let ring = Ring::new(outer, hole).map_or(Shape::RoundedRect(outer), Shape::Ring);
-        [ring, Shape::RoundedRect(stone)]
+        let ring = Ring::new(outer, hole)
+            .filter(|_| hole.contains(stone))
+            .ok_or(Error::PatternProportions)?;
+        Ok([Shape::Ring(ring), Shape::RoundedRect(stone)])
     }
 }
 
@@ -502,12 +503,44 @@ mod tests {
         assert!(PatternShape::new(r(0.5), r(0.6), corner).is_err());
         assert!(PatternShape::new(r(0.5), r(0.5), corner).is_err());
         assert!(PatternShape::new(r(0.7), r(0.4), corner).is_ok());
+        assert!(PatternShape::new(Ratio::ONE, r(0.4), corner).is_err());
+    }
+
+    #[test]
+    fn patterns_that_do_not_nest_are_refused() {
+        let area = Rect::from_origin(Point::new(0.0, 0.0), 70.0, 70.0);
+        let round_frame = PatternShape::SQUARE_FINDER.with_outer_corner(Roundness::CIRCLE);
+        assert!(matches!(
+            round_frame.shapes_in(area),
+            Err(Error::PatternProportions)
+        ));
+        let round_hole = PatternShape::new(
+            Ratio::new(0.5).expect("ratio"),
+            Ratio::new(0.45).expect("ratio"),
+            Roundness::SQUARE,
+        )
+        .expect("pattern")
+        .with_hole_corner(Roundness::CIRCLE);
+        assert!(matches!(
+            round_hole.shapes_in(area),
+            Err(Error::PatternProportions)
+        ));
+        for preset in [
+            PatternShape::BRAND_FINDER,
+            PatternShape::ROUNDED_FINDER,
+            PatternShape::SQUARE_FINDER,
+            PatternShape::ROUNDED_ALIGNMENT,
+        ] {
+            assert!(preset.shapes_in(area).is_ok());
+        }
     }
 
     #[test]
     fn pattern_shapes_nest_and_are_centered() {
         let area = Rect::from_origin(Point::new(10.0, 20.0), 70.0, 70.0);
-        let [ring, stone] = PatternShape::ROUNDED_FINDER.shapes_in(area);
+        let [ring, stone] = PatternShape::ROUNDED_FINDER
+            .shapes_in(area)
+            .expect("shapes");
         let ring = as_ring(ring).expect("ring");
         assert_eq!(ring.outer().rect(), area);
         assert_eq!(ring.inner().rect().center(), area.center());
@@ -516,13 +549,14 @@ mod tests {
         assert!((ring.outer().radius() - 70.0 * 60.0 / 308.0).abs() < 1e-9);
         assert!((stone.bounds().width() - 70.0 * 138.0 / 308.0).abs() < 1e-9);
         let sharp = PatternShape::BRAND_FINDER;
-        let ring = as_ring(sharp.shapes_in(area)[0]).expect("ring");
+        let [ring, _] = sharp.shapes_in(area).expect("shapes");
+        let ring = as_ring(ring).expect("ring");
         assert!((ring.outer().radius() - 0.0).abs() < 1e-12);
         assert!((ring.inner().radius() - 70.0 * 228.0 / 308.0 * 60.0 / 308.0).abs() < 1e-9);
         let custom = sharp
             .with_hole_corner(Roundness::CIRCLE)
             .with_stone_corner(Roundness::SQUARE);
-        let [ring, stone] = custom.shapes_in(area);
+        let [ring, stone] = custom.shapes_in(area).expect("shapes");
         let ring = as_ring(ring).expect("ring");
         assert!((ring.inner().radius() - ring.inner().rect().width() / 2.0).abs() < 1e-9);
         assert!((stone.area() - stone.bounds().area()).abs() < 1e-12);
