@@ -88,7 +88,7 @@ fn production_configurations_decode() {
             .with_padding(Padding::new(padding).expect("padding"));
         compose(&symbol, layout(px, quiet), Style::BRAND, Some(&logo)).to_image()
     };
-    for len in [1usize, 20, 42, 120, 300] {
+    for len in [1usize, 20, 42, 120, 300, 441] {
         let data = payload(len);
         for logo in &logos {
             let app = render(&data, logo, 22, 4, 1);
