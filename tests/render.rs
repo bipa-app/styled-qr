@@ -148,6 +148,22 @@ fn builder_rejects_invalid_configuration_instead_of_panicking() {
 }
 
 #[test]
+fn reused_stamps_keep_the_whole_shape() {
+    let symbol = Symbol::encode(b"stamp", EcLevel::H).expect("encode");
+    let mut scene = compose(&symbol, layout(10, 4), Style::BRAND, None);
+    let edge = f64::from(scene.size()) - 1.5;
+    let disc =
+        |x: f64| Shape::Disc(qrcoder::Disc::new(qrcoder::Point::new(x, 20.5), 4.0).expect("disc"));
+    scene.push_layer(qrcoder::Layer {
+        color: Color::BLACK,
+        shapes: vec![disc(edge), disc(20.5)],
+    });
+    let image = scene.to_image();
+    assert_ne!(*image.get_pixel(24, 20), Rgba([255, 255, 255, 255]));
+    assert_eq!(image.get_pixel(24, 20), image.get_pixel(16, 20));
+}
+
+#[test]
 fn presets_decode_without_logo() {
     for style in [Style::BRAND, Style::CLASSIC] {
         for len in [5usize, 80, 400] {
@@ -381,9 +397,9 @@ fn svg_mirrors_the_scene() {
     assert_eq!(svg.matches("<circle").count(), discs);
     assert_eq!(svg.matches("fill-rule=\"evenodd\"").count(), rings);
     assert_eq!(svg.matches("<image").count(), 1);
-    assert!(svg.contains("data:image/png;base64,"));
+    assert!(svg.contains(r#"xlink:href="data:image/png;base64,"#));
     assert!(svg.starts_with(&format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{0}" height="{0}""#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{0}" height="{0}" viewBox="0 0 {0} {0}">"#,
         scene.size()
     )));
     assert!(svg.ends_with("</svg>"));
@@ -701,4 +717,15 @@ fn linear_blending_lightens_partial_edges_only() {
     assert_eq!(*linear.get_pixel(4, 3), Rgba([188, 188, 188, 255]));
     assert_eq!(*linear.get_pixel(5, 3), Rgba([255, 255, 255, 255]));
     assert_eq!(decode(&linear), vec!["gamma".to_owned()]);
+    let svg = |blending| {
+        let style = Style {
+            blending,
+            ..Style::BRAND
+        };
+        compose(&symbol, layout(10, 4), style, None)
+            .to_svg()
+            .expect("svg")
+    };
+    assert!(svg(qrcoder::Blending::Linear).contains(r#"color-interpolation="linearRGB""#));
+    assert!(!svg(qrcoder::Blending::Srgb).contains("color-interpolation"));
 }

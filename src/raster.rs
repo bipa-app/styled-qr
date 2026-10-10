@@ -91,8 +91,8 @@ impl PreparedLayer {
             .map(|(_, i)| *i);
         let stamp = reused.unwrap_or_else(|| {
             let local_bounds = local.bounds();
-            let width = ceil_clamped(local_bounds.max().x, size.saturating_sub(x));
-            let height = ceil_clamped(local_bounds.max().y, size.saturating_sub(y));
+            let width = ceil_clamped(local_bounds.max().x, size);
+            let height = ceil_clamped(local_bounds.max().y, size);
             self.stamps.push(Coverage::from_fn(width, height, |px, py| {
                 Luma([local.pixel_coverage(px, py)])
             }));

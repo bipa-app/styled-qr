@@ -9,12 +9,16 @@ use crate::geometry::{Rect, RoundedRect, Shape};
 use crate::logo::unit;
 use crate::raster::quantize;
 use crate::scene::Scene;
-use crate::style::Color;
+use crate::style::{Blending, Color};
 
 pub(crate) fn render(scene: &Scene) -> Result<String, Error> {
     let size = scene.size();
+    let interpolation = match scene.blending() {
+        Blending::Srgb => "",
+        Blending::Linear => r#" color-interpolation="linearRGB""#,
+    };
     let mut out = format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 {size} {size}">"#
+        r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{size}" height="{size}" viewBox="0 0 {size} {size}"{interpolation}>"#
     );
     let background = scene.background();
     if background.a > 0 {
@@ -39,7 +43,7 @@ pub(crate) fn render(scene: &Scene) -> Result<String, Error> {
         let (x, y) = logo.origin();
         let _ = write!(
             out,
-            r#"<image x="{x}" y="{y}" width="{w}" height="{h}" href="data:image/png;base64,{}"/>"#,
+            r#"<image x="{x}" y="{y}" width="{w}" height="{h}" xlink:href="data:image/png;base64,{}"/>"#,
             Base64::encode_string(&png.into_inner())
         );
     }
