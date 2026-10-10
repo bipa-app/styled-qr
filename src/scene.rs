@@ -187,7 +187,7 @@ impl<'a> Composer<'a> {
     }
 
     fn compose_at(&self, size: u32, logo_scale: f64) -> Result<Scene, Error> {
-        let placed = self.place_logo(size, logo_scale);
+        let placed = self.place_logo(size, logo_scale)?;
         let hidden = self.hidden_modules(placed.as_ref());
         let budget = BudgetUsage::of(self.symbol, self.misread_modules(&hidden, placed.as_ref()));
         if let Some(logo) = self.logo {
@@ -243,11 +243,12 @@ impl<'a> Composer<'a> {
             .collect()
     }
 
-    fn place_logo(&self, size: u32, scale: f64) -> Option<PlacedLogo> {
+    fn place_logo(&self, size: u32, scale: f64) -> Result<Option<PlacedLogo>, Error> {
         let m = f64::from(self.layout.module_size.px());
         let symbol_px = f64::from(self.symbol.width()) * m;
         self.logo
-            .and_then(|logo| logo.place(size, symbol_px, f64::from(FINDER_SPAN) * m, scale))
+            .map(|logo| logo.place(size, symbol_px, f64::from(FINDER_SPAN) * m, scale))
+            .transpose()
     }
 
     fn hidden_modules(&self, placed: Option<&PlacedLogo>) -> BTreeSet<Pos> {

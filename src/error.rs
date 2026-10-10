@@ -29,6 +29,8 @@ pub enum Error {
     LogoExceedsErrorBudget { used: u16, budget: u16 },
     #[error("logo image has no pixels")]
     EmptyLogo,
+    #[error("logo of {width}x{height}px does not fit within 2..={max}px")]
+    LogoDoesNotFit { width: u64, height: u64, max: u32 },
     #[error("failed to encode image: {0}")]
     Image(#[from] image::ImageError),
 }

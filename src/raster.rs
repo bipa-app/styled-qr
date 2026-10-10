@@ -1,7 +1,7 @@
 use image::{ImageBuffer, Luma, Rgba, RgbaImage};
 
 use crate::geometry::Shape;
-use crate::logo::PremultipliedImage;
+use crate::logo::{PremultipliedImage, unit};
 use crate::scene::{Layer, Scene};
 use crate::style::{Blending, Color};
 use crate::units::{ceil_clamped, floor_clamped, round_clamped};
@@ -136,18 +136,19 @@ fn composite_layer(canvas: &mut PremultipliedImage, coverage: &mut Coverage, src
 
 fn composite_image(
     canvas: &mut PremultipliedImage,
-    image: &PremultipliedImage,
+    image: &RgbaImage,
     origin: (u32, u32),
     top: u32,
     blending: Blending,
 ) {
-    let rows = canvas.height();
-    for (x, y, src) in image.enumerate_pixels() {
-        let row = origin.1 + y;
-        if (top..top + rows).contains(&row)
-            && let Some(dst) = canvas.get_pixel_mut_checked(origin.0 + x, row - top)
-        {
-            over(dst, convert(*src, blending), 1.0);
+    let first = top.max(origin.1);
+    let last = (top + canvas.height()).min(origin.1 + image.height());
+    for row in first..last {
+        for x in 0..image.width() {
+            if let Some(dst) = canvas.get_pixel_mut_checked(origin.0 + x, row - top) {
+                let src = unit(*image.get_pixel(x, row - origin.1));
+                over(dst, convert(src, blending), 1.0);
+            }
         }
     }
 }

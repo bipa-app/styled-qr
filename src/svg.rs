@@ -6,6 +6,7 @@ use image::{DynamicImage, ImageFormat, RgbaImage};
 
 use crate::error::Error;
 use crate::geometry::{Rect, RoundedRect, Shape};
+use crate::logo::unit;
 use crate::raster::quantize;
 use crate::scene::Scene;
 use crate::style::Color;
@@ -32,11 +33,7 @@ pub(crate) fn render(scene: &Scene) -> Result<String, Error> {
     }
     if let Some(logo) = scene.logo() {
         let (w, h) = logo.image().dimensions();
-        let rgba = RgbaImage::from_fn(w, h, |x, y| {
-            logo.image()
-                .get_pixel_checked(x, y)
-                .map_or(image::Rgba([0; 4]), |p| quantize(*p))
-        });
+        let rgba = RgbaImage::from_fn(w, h, |x, y| quantize(unit(*logo.image().get_pixel(x, y))));
         let mut png = Cursor::new(Vec::new());
         DynamicImage::ImageRgba8(rgba).write_to(&mut png, ImageFormat::Png)?;
         let (x, y) = logo.origin();

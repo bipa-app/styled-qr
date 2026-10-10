@@ -12,10 +12,39 @@ use crate::units::{Padding, Ratio, Roundness, floor_clamped, round_clamped};
 pub(crate) type PremultipliedImage = ImageBuffer<Rgba<f64>, Vec<f64>>;
 
 const OPAQUE_ALPHA: f64 = 0.1;
-const CACHED_RENDITIONS: usize = 16;
+const RENDITION_CACHE_BYTES: usize = 16 << 20;
 
 type RenditionKey = (u32, u32, Clearance, Option<Plate>);
-type RenditionCache = Arc<Mutex<VecDeque<(RenditionKey, Arc<Rendition>)>>>;
+
+#[derive(Debug, Default)]
+struct RenditionCache {
+    entries: VecDeque<(RenditionKey, Arc<Rendition>)>,
+}
+
+impl RenditionCache {
+    fn get(&mut self, key: &RenditionKey) -> Option<Arc<Rendition>> {
+        let index = self.entries.iter().position(|(k, _)| k == key)?;
+        let entry = self.entries.remove(index)?;
+        let rendition = Arc::clone(&entry.1);
+        self.entries.push_back(entry);
+        Some(rendition)
+    }
+
+    fn insert(&mut self, key: RenditionKey, rendition: Arc<Rendition>) {
+        let bytes = rendition.bytes();
+        if bytes > RENDITION_CACHE_BYTES {
+            return;
+        }
+        while self.bytes() + bytes > RENDITION_CACHE_BYTES {
+            self.entries.pop_front();
+        }
+        self.entries.push_back((key, rendition));
+    }
+
+    fn bytes(&self) -> usize {
+        self.entries.iter().map(|(_, r)| r.bytes()).sum()
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LogoSize {
@@ -77,7 +106,7 @@ pub struct Logo {
     error_budget: Ratio,
     over_budget: OverBudget,
     plate: Option<Plate>,
-    renditions: RenditionCache,
+    renditions: Arc<Mutex<RenditionCache>>,
 }
 
 impl Logo {
@@ -97,7 +126,7 @@ impl Logo {
             error_budget: Self::DEFAULT_ERROR_BUDGET,
             over_budget: OverBudget::default(),
             plate: None,
-            renditions: RenditionCache::default(),
+            renditions: Arc::default(),
         })
     }
 
@@ -176,7 +205,7 @@ impl Logo {
         symbol_px: f64,
         finder_px: f64,
         scale: f64,
-    ) -> Option<PlacedLogo> {
+    ) -> Result<PlacedLogo, Error> {
         let side = fit_parity(
             round_clamped(self.size.side_px(symbol_px, finder_px) * scale, canvas_px),
             canvas_px,
@@ -185,29 +214,41 @@ impl Logo {
         let scale = f64::from(side) / f64::from(iw.max(ih));
         let tw = fit_parity(round_clamped(f64::from(iw) * scale, side), canvas_px);
         let th = fit_parity(round_clamped(f64::from(ih) * scale, side), canvas_px);
-        if tw < 2 || th < 2 {
-            return None;
+        let margin = self.plate.map_or(0, |plate| plate_margin(tw, th, plate));
+        let [width, height] = [tw, th].map(|px| u64::from(px) + 2 * u64::from(margin));
+        if tw < 2 || th < 2 || width.max(height) > u64::from(canvas_px) {
+            return Err(Error::LogoDoesNotFit {
+                width,
+                height,
+                max: canvas_px,
+            });
         }
         let rendition = self.rendition(tw, th);
         let (width, height) = rendition.image.dimensions();
-        (width <= canvas_px && height <= canvas_px).then(|| PlacedLogo {
-            origin: ((canvas_px - width) / 2, (canvas_px - height) / 2),
+        Ok(PlacedLogo {
+            origin: (
+                canvas_px.saturating_sub(width) / 2,
+                canvas_px.saturating_sub(height) / 2,
+            ),
             rendition,
         })
     }
 
     fn rendition(&self, width: u32, height: u32) -> Arc<Rendition> {
         let key = (width, height, self.clearance, self.plate);
-        if let Ok(cache) = self.renditions.lock()
-            && let Some((_, cached)) = cache.iter().find(|(k, _)| *k == key)
+        if let Some(cached) = self
+            .renditions
+            .lock()
+            .ok()
+            .and_then(|mut cache| cache.get(&key))
         {
-            return Arc::clone(cached);
+            return cached;
         }
         let resized = resize_premultiplied(&self.image, width, height);
-        let image = match self.plate {
+        let image = to_rgba8(&match self.plate {
             Some(plate) => on_plate(&resized, plate),
             None => resized,
-        };
+        });
         let footprint = match self.clearance {
             Clearance::Bounds => Footprint::Bounds,
             Clearance::Footprint => Footprint::Pixels(edge_pixels(&image)),
@@ -215,21 +256,22 @@ impl Logo {
         };
         let rendition = Arc::new(Rendition { image, footprint });
         if let Ok(mut cache) = self.renditions.lock() {
-            if cache.len() >= CACHED_RENDITIONS {
-                cache.pop_front();
-            }
-            cache.push_back((key, Arc::clone(&rendition)));
+            cache.insert(key, Arc::clone(&rendition));
         }
         rendition
     }
 }
 
-fn on_plate(logo: &PremultipliedImage, plate: Plate) -> PremultipliedImage {
-    let (width, height) = logo.dimensions();
-    let margin = round_clamped(
+fn plate_margin(width: u32, height: u32, plate: Plate) -> u32 {
+    round_clamped(
         f64::from(width.max(height)) * plate.margin.get(),
         u32::MAX / 4,
-    );
+    )
+}
+
+fn on_plate(logo: &PremultipliedImage, plate: Plate) -> PremultipliedImage {
+    let (width, height) = logo.dimensions();
+    let margin = plate_margin(width, height, plate);
     let (plate_w, plate_h) = (width + 2 * margin, height + 2 * margin);
     let rect = Rect::from_origin(Point::new(0.0, 0.0), f64::from(plate_w), f64::from(plate_h));
     let shape = Shape::RoundedRect(RoundedRect::new(
@@ -274,8 +316,19 @@ enum Footprint {
 
 #[derive(Clone, Debug, PartialEq)]
 struct Rendition {
-    image: PremultipliedImage,
+    image: RgbaImage,
     footprint: Footprint,
+}
+
+impl Rendition {
+    fn bytes(&self) -> usize {
+        let footprint = match &self.footprint {
+            Footprint::Bounds => 0,
+            Footprint::Pixels(edge) => size_of_val(edge.as_slice()),
+            Footprint::Hull(hull) => size_of_val(hull.as_slice()),
+        };
+        size_of_val(self.image.as_raw().as_slice()) + footprint
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -289,7 +342,7 @@ impl PlacedLogo {
         self.origin
     }
 
-    pub(crate) fn image(&self) -> &PremultipliedImage {
+    pub(crate) fn image(&self) -> &RgbaImage {
         &self.rendition.image
     }
 
@@ -350,7 +403,7 @@ impl PlacedLogo {
     fn pixel_at(&self, point: Point) -> Rgba<f64> {
         self.pixel_index(point)
             .and_then(|(x, y)| self.image().get_pixel_checked(x, y).copied())
-            .unwrap_or(Rgba([0.0; 4]))
+            .map_or(Rgba([0.0; 4]), unit)
     }
 
     fn is_opaque_at(&self, point: Point) -> bool {
@@ -429,21 +482,32 @@ fn segment_distance(a: Point, b: Point, p: Point) -> f64 {
     p.distance(Point::new(a.x + t * dx, a.y + t * dy))
 }
 
-fn alpha(image: &PremultipliedImage, x: u32, y: u32) -> f64 {
-    image
-        .get_pixel_checked(x, y)
-        .map_or(0.0, |&Rgba([_, _, _, a])| a)
+pub(crate) fn unit(Rgba(channels): Rgba<u8>) -> Rgba<f64> {
+    Rgba(channels.map(|c| f64::from(c) / 255.0))
 }
 
-fn edge_pixels(image: &PremultipliedImage) -> Vec<(u32, u32)> {
+fn to_rgba8(image: &PremultipliedImage) -> RgbaImage {
+    let channel = |v: f64| u8::try_from(round_clamped(v * 255.0, 255)).unwrap_or(u8::MAX);
+    RgbaImage::from_fn(image.width(), image.height(), |x, y| {
+        Rgba(image.get_pixel(x, y).0.map(channel))
+    })
+}
+
+fn alpha(image: &RgbaImage, x: u32, y: u32) -> f64 {
+    image
+        .get_pixel_checked(x, y)
+        .map_or(0.0, |&Rgba([_, _, _, a])| f64::from(a) / 255.0)
+}
+
+fn edge_pixels(image: &RgbaImage) -> Vec<(u32, u32)> {
     let opaque = |x: Option<u32>, y: Option<u32>| match (x, y) {
         (Some(x), Some(y)) => alpha(image, x, y) >= OPAQUE_ALPHA,
         _ => false,
     };
     image
         .enumerate_pixels()
-        .filter(|(x, y, Rgba([_, _, _, a]))| {
-            *a >= OPAQUE_ALPHA
+        .filter(|(x, y, _)| {
+            alpha(image, *x, *y) >= OPAQUE_ALPHA
                 && !(opaque(x.checked_sub(1), Some(*y))
                     && opaque(x.checked_add(1), Some(*y))
                     && opaque(Some(*x), y.checked_sub(1))
@@ -530,14 +594,31 @@ mod tests {
     }
 
     #[test]
-    fn rendition_cache_is_bounded() {
-        let logo = Logo::new(&disc_logo(64)).expect("logo");
-        for step in 0..40u32 {
-            let scale = 0.3 + f64::from(step) * 0.015;
-            assert!(logo.place(1000, 800.0, 70.0, scale).is_some());
+    fn rendition_cache_is_bounded_by_bytes_and_keeps_recent_entries() {
+        let logo = Logo::new(&disc_logo(64))
+            .expect("logo")
+            .with_size(LogoSize::Width(Ratio::ONE));
+        let first = logo.place(4000, 4000.0, 70.0, 0.25).expect("placed");
+        for step in 0..12u32 {
+            let scale = 0.2 + f64::from(step) * 0.008;
+            assert!(logo.place(4000, 4000.0, 70.0, scale).is_ok());
+            let again = logo.place(4000, 4000.0, 70.0, 0.25).expect("placed");
+            assert!(Arc::ptr_eq(&first.rendition, &again.rendition));
         }
-        let cached = logo.renditions.lock().map_or(0, |c| c.len());
-        assert_eq!(cached, CACHED_RENDITIONS);
+        let cache = logo.renditions.lock().expect("cache");
+        assert!(cache.bytes() <= RENDITION_CACHE_BYTES);
+        assert!(cache.entries.len() < 13);
+        assert!(first.rendition.bytes() >= 1000 * 1000 * 4);
+    }
+
+    #[test]
+    fn renditions_larger_than_the_cache_are_not_kept() {
+        let logo = Logo::new(&disc_logo(64))
+            .expect("logo")
+            .with_size(LogoSize::Width(Ratio::ONE));
+        let large = logo.place(2100, 2100.0, 70.0, 1.0).expect("placed");
+        assert!(large.rendition.bytes() > RENDITION_CACHE_BYTES);
+        assert!(logo.renditions.lock().expect("cache").entries.is_empty());
     }
 
     #[test]
@@ -556,7 +637,7 @@ mod tests {
         let placed = logo.place(100, 100.0, 7.0, 1.0).expect("placed");
         assert_eq!(placed.image().dimensions(), (30, 30));
         assert_eq!(placed.origin(), (35, 35));
-        let pixel = |x: u32, y: u32| placed.image().get_pixel(x, y).0;
+        let pixel = |x: u32, y: u32| unit(*placed.image().get_pixel(x, y)).0;
         let close = |a: [f64; 4], b: [f64; 4]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-9);
         assert!(close(
             pixel(0, 0),
@@ -590,16 +671,17 @@ mod tests {
             });
         let placed = logo.place(100, 100.0, 7.0, 1.0).expect("placed");
         assert_eq!(placed.image().dimensions(), (48, 48));
-        let alpha = |x: u32, y: u32| placed.image().get_pixel(x, y).0[3];
+        let alpha = |x: u32, y: u32| unit(*placed.image().get_pixel(x, y)).0[3];
         assert!(alpha(0, 0) < 1e-9);
         assert!((alpha(24, 24) - 1.0).abs() < 1e-9);
         assert!(alpha(0, 24) > 0.0 && alpha(0, 24) <= 1.0);
-        let total: f64 = placed.image().pixels().map(|p| p.0[3]).sum();
-        assert!((total - std::f64::consts::PI * 24.0 * 24.0).abs() < 1e-6);
+        let total: f64 = placed.image().pixels().map(|p| unit(*p).0[3]).sum();
+        let edge = 2.0 * std::f64::consts::PI * 24.0;
+        assert!((total - std::f64::consts::PI * 24.0 * 24.0).abs() < edge * 0.5 / 255.0);
     }
 
     #[test]
-    fn plate_larger_than_the_canvas_is_skipped() {
+    fn plate_larger_than_the_canvas_is_refused_before_the_resize() {
         let image = RgbaImage::from_pixel(20, 20, Rgba([0, 0, 0, 255]));
         let logo = Logo::new(&image)
             .expect("logo")
@@ -609,7 +691,15 @@ mod tests {
                 margin: Ratio::ONE,
                 roundness: Roundness::SQUARE,
             });
-        assert!(logo.place(100, 100.0, 7.0, 1.0).is_none());
+        assert!(matches!(
+            logo.place(100, 100.0, 7.0, 1.0),
+            Err(Error::LogoDoesNotFit {
+                width: 300,
+                height: 300,
+                max: 100
+            })
+        ));
+        assert!(logo.renditions.lock().expect("cache").entries.is_empty());
     }
 
     #[test]
@@ -687,22 +777,22 @@ mod tests {
     }
 
     #[test]
-    fn flat_logos_that_round_to_one_pixel_are_skipped() {
+    fn flat_logos_that_round_to_one_pixel_are_refused() {
         let wide = RgbaImage::from_pixel(200, 1, Rgba([0, 0, 0, 255]));
         let logo = Logo::new(&wide)
             .expect("logo")
             .with_size(LogoSize::Width(Ratio::or_one(0.2)));
-        assert!(logo.place(1000, 1000.0, 70.0, 1.0).is_none());
+        assert!(logo.place(1000, 1000.0, 70.0, 1.0).is_err());
         let tall = RgbaImage::from_pixel(1, 200, Rgba([0, 0, 0, 255]));
         let logo = Logo::new(&tall)
             .expect("logo")
             .with_size(LogoSize::Width(Ratio::or_one(0.2)));
-        assert!(logo.place(1000, 1000.0, 70.0, 1.0).is_none());
+        assert!(logo.place(1000, 1000.0, 70.0, 1.0).is_err());
         let square = RgbaImage::from_pixel(4, 4, Rgba([0, 0, 0, 255]));
         let logo = Logo::new(&square)
             .expect("logo")
             .with_size(LogoSize::Width(Ratio::or_one(0.002)));
-        assert!(logo.place(1000, 1000.0, 70.0, 1.0).is_some());
+        assert!(logo.place(1000, 1000.0, 70.0, 1.0).is_ok());
     }
 
     #[test]
@@ -987,11 +1077,11 @@ mod tests {
     }
 
     #[test]
-    fn tiny_logos_are_skipped() {
+    fn tiny_logos_are_refused() {
         let logo = Logo::new(&disc_logo(64))
             .expect("logo")
             .with_size(LogoSize::Width(Ratio::or_one(0.05)));
-        assert!(logo.place(30, 21.0, 7.0, 1.0).is_none());
+        assert!(logo.place(30, 21.0, 7.0, 1.0).is_err());
     }
 
     #[test]
