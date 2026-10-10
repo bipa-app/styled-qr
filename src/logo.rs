@@ -32,7 +32,7 @@ impl RenditionCache {
 
     fn insert(&mut self, key: RenditionKey, rendition: Arc<Rendition>) {
         let bytes = rendition.bytes();
-        if bytes > RENDITION_CACHE_BYTES {
+        if bytes > RENDITION_CACHE_BYTES || self.entries.iter().any(|(k, _)| *k == key) {
             return;
         }
         while self.bytes() + bytes > RENDITION_CACHE_BYTES {
@@ -609,6 +609,16 @@ mod tests {
         assert!(cache.bytes() <= RENDITION_CACHE_BYTES);
         assert!(cache.entries.len() < 13);
         assert!(first.rendition.bytes() >= 1000 * 1000 * 4);
+    }
+
+    #[test]
+    fn the_cache_keeps_one_entry_per_key() {
+        let logo = Logo::new(&disc_logo(64)).expect("logo");
+        let placed = logo.place(1000, 800.0, 70.0, 1.0).expect("placed");
+        let mut cache = logo.renditions.lock().expect("cache");
+        let key = cache.entries[0].0;
+        cache.insert(key, Arc::clone(&placed.rendition));
+        assert_eq!(cache.entries.len(), 1);
     }
 
     #[test]
