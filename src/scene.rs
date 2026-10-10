@@ -15,6 +15,7 @@ use crate::{raster, svg};
 const FINDER_SPAN: u8 = 7;
 const ALIGNMENT_SPAN: u8 = 5;
 const FORMAT_SPAN: u8 = FINDER_SPAN + 2;
+const CORRECTABLE_INFO_BITS: u8 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Layout {
@@ -363,28 +364,31 @@ fn span(origin: Pos, side: u8) -> impl Iterator<Item = Pos> {
 }
 
 fn check_function_patterns(symbol: &Symbol, misread: &[Pos]) -> Result<(), Error> {
-    let mut format_copies = [false; 2];
-    let mut version_copies = [false; 2];
+    let mut format_errors = [0u8; 2];
+    let mut version_errors = [0u8; 2];
     for pos in misread {
         let Some(module) = symbol.module(*pos) else {
             continue;
         };
-        match module.role {
-            Role::Data | Role::Alignment => {}
+        let errors = match module.role {
+            Role::Data | Role::Alignment => continue,
             Role::Finder | Role::Separator | Role::Timing => {
                 return Err(Error::LogoHidesFunctionPattern(module.role));
             }
-            Role::FormatInfo => {
-                format_copies[usize::from(pos.x.max(pos.y) >= FORMAT_SPAN)] = true;
-            }
-            Role::VersionInfo => version_copies[usize::from(pos.y < pos.x)] = true,
+            Role::FormatInfo => &mut format_errors[usize::from(pos.x.max(pos.y) >= FORMAT_SPAN)],
+            Role::VersionInfo => &mut version_errors[usize::from(pos.y < pos.x)],
+        };
+        *errors = errors.saturating_add(1);
+    }
+    for (role, [first, second]) in [
+        (Role::FormatInfo, format_errors),
+        (Role::VersionInfo, version_errors),
+    ] {
+        if first.max(second) > CORRECTABLE_INFO_BITS || (first > 0 && second > 0) {
+            return Err(Error::LogoHidesFunctionPattern(role));
         }
     }
-    match (format_copies, version_copies) {
-        ([true, true], _) => Err(Error::LogoHidesFunctionPattern(Role::FormatInfo)),
-        (_, [true, true]) => Err(Error::LogoHidesFunctionPattern(Role::VersionInfo)),
-        _ => Ok(()),
-    }
+    Ok(())
 }
 
 fn check_budget(budget: BudgetUsage, logo: &Logo) -> Result<(), Error> {
@@ -457,7 +461,7 @@ mod tests {
     }
 
     #[test]
-    fn one_damaged_copy_of_the_format_information_is_accepted() {
+    fn information_copies_accept_only_correctable_damage_in_one_copy() {
         let symbol = Symbol::encode(b"x", EcLevel::H).expect("encode");
         let info: Vec<Pos> = symbol
             .modules()
@@ -467,12 +471,14 @@ mod tests {
         let (near, far): (Vec<Pos>, Vec<Pos>) =
             info.iter().partition(|pos| pos.x.max(pos.y) < FORMAT_SPAN);
         assert_eq!((near.len(), far.len()), (15, 16));
-        assert!(check_function_patterns(&symbol, &near).is_ok());
-        assert!(check_function_patterns(&symbol, &far).is_ok());
-        assert!(matches!(
-            check_function_patterns(&symbol, &[near[0], far[0]]),
-            Err(Error::LogoHidesFunctionPattern(Role::FormatInfo))
-        ));
+        assert!(check_function_patterns(&symbol, &near[..3]).is_ok());
+        assert!(check_function_patterns(&symbol, &far[..3]).is_ok());
+        for misread in [&near[..4], &far[..4], &[near[0], far[0]]] {
+            assert!(matches!(
+                check_function_patterns(&symbol, misread),
+                Err(Error::LogoHidesFunctionPattern(Role::FormatInfo))
+            ));
+        }
         let version = Symbol::encode_with(b"x", EcLevel::H, Version::new(7).expect("version"))
             .expect("encode");
         let (right, left): (Vec<Pos>, Vec<Pos>) = version
@@ -481,11 +487,14 @@ mod tests {
             .map(|(pos, _)| pos)
             .partition(|pos| pos.y < pos.x);
         assert_eq!((right.len(), left.len()), (18, 18));
-        assert!(check_function_patterns(&version, &right).is_ok());
-        assert!(matches!(
-            check_function_patterns(&version, &[right[0], left[0]]),
-            Err(Error::LogoHidesFunctionPattern(Role::VersionInfo))
-        ));
+        assert!(check_function_patterns(&version, &right[..3]).is_ok());
+        assert!(check_function_patterns(&version, &left[..3]).is_ok());
+        for misread in [&right[..4], &[right[0], left[0]]] {
+            assert!(matches!(
+                check_function_patterns(&version, misread),
+                Err(Error::LogoHidesFunctionPattern(Role::VersionInfo))
+            ));
+        }
         let timing = Pos::new(10, 6);
         assert_eq!(symbol.module(timing).map(|m| m.role), Some(Role::Timing));
         assert!(matches!(
