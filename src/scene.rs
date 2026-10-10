@@ -177,15 +177,28 @@ impl<'a> Composer<'a> {
         if px < min {
             return Err(Error::ModuleTooSmall { px, min });
         }
+        let origin = Pos::new(0, 0);
+        self.style
+            .finder
+            .shapes_in(self.layout.area(origin, FINDER_SPAN))?;
+        match self.style.alignment {
+            AlignmentStyle::Pattern(pattern) => {
+                pattern.shapes_in(self.layout.area(origin, ALIGNMENT_SPAN))?;
+            }
+            AlignmentStyle::Modules => {}
+        }
+        let error = match self.compose_at(size, 1.0) {
+            Ok(scene) => return Ok(scene),
+            Err(error) => error,
+        };
         let fallbacks = match self.logo {
-            Some(logo) => logo.over_budget().fallback_scales(),
-            None => &[],
+            Some(logo) if shrinking_helps(&error) => logo.over_budget().fallback_scales(),
+            Some(_) | None => &[],
         };
         fallbacks
             .iter()
-            .fold(self.compose_at(size, 1.0), |scene, scale| {
-                scene.or_else(|_| self.compose_at(size, *scale))
-            })
+            .find_map(|scale| self.compose_at(size, *scale).ok())
+            .ok_or(error)
     }
 
     fn compose_at(&self, size: u32, logo_scale: f64) -> Result<Scene, Error> {
@@ -391,6 +404,27 @@ fn check_function_patterns(symbol: &Symbol, misread: &[Pos]) -> Result<(), Error
     Ok(())
 }
 
+const fn shrinking_helps(error: &Error) -> bool {
+    match error {
+        Error::LogoDoesNotFit { .. }
+        | Error::LogoHidesFunctionPattern(_)
+        | Error::LogoExceedsErrorBudget { .. } => true,
+        Error::Encode(_)
+        | Error::Version(_)
+        | Error::ModuleSize { .. }
+        | Error::QuietZone { .. }
+        | Error::Padding { .. }
+        | Error::Ratio(_)
+        | Error::Roundness(_)
+        | Error::PatternProportions
+        | Error::CanvasTooLarge { .. }
+        | Error::ModuleTooSmall { .. }
+        | Error::InsufficientContrast { .. }
+        | Error::EmptyLogo
+        | Error::Image(_) => false,
+    }
+}
+
 fn check_budget(budget: BudgetUsage, logo: &Logo) -> Result<(), Error> {
     if budget.fraction() <= logo.error_budget().get() {
         Ok(())
@@ -529,13 +563,41 @@ mod tests {
     }
 
     #[test]
-    fn finder_shapes_that_do_not_nest_are_refused() {
+    fn pattern_shapes_that_do_not_nest_are_refused_at_every_version() {
+        let round_frame = PatternShape::SQUARE_FINDER.with_outer_corner(Roundness::CIRCLE);
+        let styles = [
+            Style {
+                finder: round_frame,
+                ..Style::BRAND
+            },
+            Style {
+                alignment: AlignmentStyle::Pattern(round_frame),
+                ..Style::BRAND
+            },
+        ];
+        for style in styles {
+            for number in [1, 2, 40] {
+                let version = Version::new(number).expect("version");
+                let symbol = Symbol::encode_with(b"x", EcLevel::H, version).expect("encode");
+                let scene = Composer::new(&symbol, layout(4, 4)).style(style).compose();
+                assert!(matches!(scene, Err(Error::PatternProportions)), "v{number}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_logo_that_never_fits_reports_the_full_size_error() {
         let symbol = Symbol::encode(b"x", EcLevel::H).expect("encode");
-        let style = Style {
-            finder: PatternShape::SQUARE_FINDER.with_outer_corner(Roundness::CIRCLE),
-            ..Style::BRAND
+        let logo = square_logo().with_size(LogoSize::Width(Ratio::ONE));
+        let compose = |over_budget| {
+            let logo = logo.clone().with_over_budget(over_budget);
+            Composer::new(&symbol, layout(10, 4))
+                .logo(&logo)
+                .compose()
+                .map(|scene| scene.size())
         };
-        let scene = Composer::new(&symbol, layout(10, 4)).style(style).compose();
-        assert!(matches!(scene, Err(Error::PatternProportions)));
+        let rejected = compose(OverBudget::Reject).expect_err("too large");
+        let shrunk = compose(OverBudget::Shrink).expect_err("too large");
+        assert_eq!(shrunk.to_string(), rejected.to_string());
     }
 }
