@@ -1,6 +1,8 @@
 # styled-qr
 
 [![CI](https://github.com/bipa-app/styled-qr/actions/workflows/ci.yml/badge.svg)](https://github.com/bipa-app/styled-qr/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/styled-qr.svg)](https://crates.io/crates/styled-qr)
+[![docs.rs](https://img.shields.io/docsrs/styled-qr)](https://docs.rs/styled-qr)
 
 Styled QR codes with exact anti-aliasing, logos, and PNG and SVG output.
 
@@ -18,7 +20,7 @@ and the SVG come from the same scene.
 
 ```toml
 [dependencies]
-styled-qr = { git = "https://github.com/bipa-app/styled-qr" }
+styled-qr = "0.1"
 ```
 
 ```rust
