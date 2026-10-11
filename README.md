@@ -1,6 +1,14 @@
 # styled-qr
 
+[![CI](https://github.com/bipa-app/styled-qr/actions/workflows/ci.yml/badge.svg)](https://github.com/bipa-app/styled-qr/actions/workflows/ci.yml)
+
 Styled QR codes with exact anti-aliasing, logos, and PNG and SVG output.
+
+<p>
+<img src="assets/dots.png" width="200" alt="QR code with round dots">
+<img src="assets/plate.png" width="200" alt="QR code with a white mark on a violet plate">
+<img src="assets/colors.png" width="200" alt="QR code with rounded dark modules and violet finder patterns">
+</p>
 
 Each pixel gets the exact area of the shapes that cover it, so dots, finder
 patterns and logos stay symmetric and centered at every module size. The PNG
@@ -14,25 +22,134 @@ styled-qr = { git = "https://github.com/bipa-app/styled-qr" }
 ```
 
 ```rust
-use styled_qr::{Composer, EcLevel, Layout, Logo, ModuleSize, QuietZone, Style, Symbol};
+use styled_qr::{Composer, EcLevel, Layout, ModuleSize, QuietZone, Symbol};
 
-fn main() -> Result<(), styled_qr::Error> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let symbol = Symbol::encode(b"https://example.com", EcLevel::H)?;
-    let layout = Layout::new(ModuleSize::new(12)?, QuietZone::new(4)?);
-    let logo = Logo::new(&image::RgbaImage::from_pixel(64, 64, image::Rgba([0, 0, 0, 255])))?;
-    let scene = Composer::new(&symbol, layout)
-        .style(Style::CONNECTED)
-        .logo(&logo)
-        .compose()?;
-    let png = scene.to_png()?;
-    let svg = scene.to_svg()?;
-    assert_eq!(scene.size(), (u32::from(symbol.width()) + 8) * 12);
-    assert!(png.starts_with(b"\x89PNG") && svg.starts_with("<svg"));
+    let layout = Layout::new(ModuleSize::new(10)?, QuietZone::new(4)?);
+    let scene = Composer::new(&symbol, layout).compose()?;
+    std::fs::write("qr.png", scene.to_png()?)?;
+    std::fs::write("qr.svg", scene.to_svg()?)?;
     Ok(())
 }
 ```
 
-`Layout::fit` picks the largest module size that fits a pixel budget.
+`ModuleSize` is the side of one module in pixels, and `QuietZone` is the empty
+border in modules. `Layout::fit` picks the largest module size that fits a
+pixel budget.
+
+## Gallery
+
+Each example continues the one above, with the same `symbol` and `layout`.
+[`examples/gallery.rs`](examples/gallery.rs) renders every image on this page
+and checks that each one decodes. Run it from the repository root with
+`cargo run --example gallery`.
+
+<table>
+<tr>
+<td><img src="assets/dots.png" width="220" alt="QR code with round dots"></td>
+<td>
+
+**Dots**, the default style.
+
+```rust
+let scene = Composer::new(&symbol, layout).compose()?;
+```
+
+</td>
+</tr>
+<tr>
+<td><img src="assets/connected.png" width="220" alt="QR code with modules that join their neighbors"></td>
+<td>
+
+**Connected**. Each module joins its dark neighbors.
+
+```rust
+let scene = Composer::new(&symbol, layout)
+    .style(Style::CONNECTED)
+    .compose()?;
+```
+
+</td>
+</tr>
+<tr>
+<td><img src="assets/classic.png" width="220" alt="QR code with square modules"></td>
+<td>
+
+**Classic**. Square modules and finder patterns.
+
+```rust
+let scene = Composer::new(&symbol, layout)
+    .style(Style::CLASSIC)
+    .compose()?;
+```
+
+</td>
+</tr>
+<tr>
+<td><img src="assets/logo.png" width="220" alt="QR code with a violet logo in the center"></td>
+<td>
+
+**Logo**. The composer clears the modules behind the logo and checks that the code still decodes.
+
+```rust
+let logo = Logo::new(&image::open("assets/badge.png")?)?;
+let scene = Composer::new(&symbol, layout).logo(&logo).compose()?;
+```
+
+</td>
+</tr>
+<tr>
+<td><img src="assets/plate.png" width="220" alt="QR code with a white mark on a violet plate"></td>
+<td>
+
+**Plate**. A rounded backing turns a transparent mark into a badge.
+
+```rust
+let logo = Logo::new(&image::open("assets/mark.png")?)?.with_plate(Plate {
+    color: Color::rgb(124, 58, 237),
+    margin: Ratio::new(0.2)?,
+    roundness: Roundness::new(0.4)?,
+});
+let scene = Composer::new(&symbol, layout).logo(&logo).compose()?;
+```
+
+</td>
+</tr>
+<tr>
+<td><img src="assets/colors.png" width="220" alt="QR code with rounded dark modules and violet finder patterns"></td>
+<td>
+
+**Colors and shapes**. Rounded modules, a slate palette and violet finder patterns.
+
+```rust
+let style = Style {
+    module: ModuleShape::Rounded {
+        size: Ratio::new(0.9)?,
+        roundness: Roundness::new(0.5)?,
+    },
+    palette: Palette::new(Color::rgb(30, 41, 59), Color::rgb(248, 250, 252))?
+        .with_finder(Color::rgb(124, 58, 237))?,
+    ..Style::DOTS
+};
+let scene = Composer::new(&symbol, layout).style(style).compose()?;
+```
+
+</td>
+</tr>
+<tr>
+<td><img src="assets/colors.svg" width="220" alt="The same QR code as an SVG image"></td>
+<td>
+
+**SVG**. The same scene as an SVG file. This image is the SVG.
+
+```rust
+std::fs::write("assets/colors.svg", scene.to_svg()?)?;
+```
+
+</td>
+</tr>
+</table>
 
 ## Styles
 
@@ -78,4 +195,4 @@ backend. The commit history keeps each author of that work.
 
 ## License
 
-MIT. See the `LICENSE` file.
+MIT. See [LICENSE](LICENSE).

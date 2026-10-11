@@ -1,4 +1,21 @@
-#![doc = include_str!("../README.md")]
+//! Styled QR codes with exact anti-aliasing, logos, and PNG and SVG output.
+//!
+//! The [README](https://github.com/bipa-app/styled-qr#readme) has a gallery of
+//! styles, each with its code.
+//!
+//! ```
+//! use styled_qr::{Composer, EcLevel, Layout, Logo, ModuleSize, QuietZone, Symbol};
+//!
+//! let symbol = Symbol::encode(b"https://example.com", EcLevel::H)?;
+//! let layout = Layout::new(ModuleSize::new(12)?, QuietZone::new(4)?);
+//! let logo = Logo::new(&image::RgbaImage::from_pixel(64, 64, image::Rgba([0, 0, 0, 255])))?;
+//! let scene = Composer::new(&symbol, layout).logo(&logo).compose()?;
+//! let png = scene.to_image();
+//! let svg = scene.to_svg()?;
+//! assert_eq!(png.width(), (u32::from(symbol.width()) + 8) * 12);
+//! assert!(svg.starts_with("<svg"));
+//! # Ok::<(), styled_qr::Error>(())
+//! ```
 
 mod budget;
 mod error;

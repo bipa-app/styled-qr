@@ -9,6 +9,7 @@ repository = "https://github.com/bipa-app/styled-qr"
 readme = "README.md"
 keywords = ["qrcode", "qr", "svg", "png", "logo"]
 categories = ["encoding", "graphics", "multimedia::images"]
+exclude = ["/assets", "/.github"]
 
 [dependencies]
 base64ct = { version = "1.8.3", default-features = false, features = ["alloc"] }
