@@ -23,6 +23,7 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked --release
+      - run: cargo package --locked
       - run: cargo run --locked --release --example gallery
       - run: cargo doc --locked --no-deps
         env:
