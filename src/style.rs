@@ -209,9 +209,6 @@ impl ModuleShape {
     pub const DOT: Self = Self::Dot {
         diameter: Ratio::or_one(0.85),
     };
-    pub const LEGACY_DOT: Self = Self::Dot {
-        diameter: Ratio::or_one(0.8),
-    };
 
     #[must_use]
     pub fn shape_in(&self, cell: Rect) -> Option<Shape> {
@@ -272,7 +269,8 @@ pub struct PatternShape {
 }
 
 impl PatternShape {
-    pub const BRAND_FINDER: Self = Self::ROUNDED_FINDER.with_outer_corner(Roundness::SQUARE);
+    pub const ROUNDED_INNER_FINDER: Self =
+        Self::ROUNDED_FINDER.with_outer_corner(Roundness::SQUARE);
     pub const ROUNDED_FINDER: Self = Self::uniform(
         Ratio::or_one(228.0 / 308.0),
         Ratio::or_one(138.0 / 308.0),
@@ -365,9 +363,9 @@ pub struct Style {
 }
 
 impl Style {
-    pub const BRAND: Self = Self {
+    pub const DOTS: Self = Self {
         module: ModuleShape::DOT,
-        finder: PatternShape::BRAND_FINDER,
+        finder: PatternShape::ROUNDED_INNER_FINDER,
         alignment: AlignmentStyle::Pattern(PatternShape::ROUNDED_ALIGNMENT),
         palette: Palette {
             dark: Color::BLACK,
@@ -377,33 +375,25 @@ impl Style {
         blending: Blending::Srgb,
     };
 
-    pub const LEGACY: Self = Self {
-        module: ModuleShape::LEGACY_DOT,
-        finder: PatternShape::ROUNDED_FINDER,
-        alignment: AlignmentStyle::Modules,
-        palette: Self::BRAND.palette,
-        blending: Blending::Srgb,
-    };
-
     pub const CONNECTED: Self = Self {
         module: ModuleShape::Connected {
             roundness: Roundness::or_square(0.5),
         },
-        ..Self::BRAND
+        ..Self::DOTS
     };
 
     pub const CLASSIC: Self = Self {
         module: ModuleShape::Square,
         finder: PatternShape::SQUARE_FINDER,
         alignment: AlignmentStyle::Modules,
-        palette: Self::BRAND.palette,
+        palette: Self::DOTS.palette,
         blending: Blending::Srgb,
     };
 }
 
 impl Default for Style {
     fn default() -> Self {
-        Self::BRAND
+        Self::DOTS
     }
 }
 
@@ -464,20 +454,24 @@ mod tests {
     }
 
     #[test]
-    fn brand_constants_are_valid_ratios() {
+    fn preset_constants_are_valid_ratios() {
         let check = |p: PatternShape| {
             assert!(p.stone < p.hole);
             assert!(p.hole.get() < 1.0);
             assert!(p.outer_corner.get() <= 1.0 && p.stone_corner.get() >= 0.0);
         };
-        check(PatternShape::BRAND_FINDER);
+        check(PatternShape::ROUNDED_INNER_FINDER);
         check(PatternShape::ROUNDED_FINDER);
         check(PatternShape::SQUARE_FINDER);
         check(PatternShape::ROUNDED_ALIGNMENT);
-        assert!((PatternShape::BRAND_FINDER.hole.get() - 228.0 / 308.0).abs() < 1e-12);
-        assert_eq!(PatternShape::BRAND_FINDER.outer_corner, Roundness::SQUARE);
+        assert!((PatternShape::ROUNDED_INNER_FINDER.hole.get() - 228.0 / 308.0).abs() < 1e-12);
         assert_eq!(
-            PatternShape::BRAND_FINDER.with_outer_corner(PatternShape::ROUNDED_FINDER.outer_corner),
+            PatternShape::ROUNDED_INNER_FINDER.outer_corner,
+            Roundness::SQUARE
+        );
+        assert_eq!(
+            PatternShape::ROUNDED_INNER_FINDER
+                .with_outer_corner(PatternShape::ROUNDED_FINDER.outer_corner),
             PatternShape::ROUNDED_FINDER
         );
         assert_eq!(
@@ -486,14 +480,8 @@ mod tests {
                 diameter: Ratio::or_one(0.85)
             }
         );
-        assert_eq!(
-            ModuleShape::LEGACY_DOT,
-            ModuleShape::Dot {
-                diameter: Ratio::or_one(0.8)
-            }
-        );
-        assert_eq!(Style::default(), Style::BRAND);
-        assert_eq!(Style::BRAND.palette, Palette::default());
+        assert_eq!(Style::default(), Style::DOTS);
+        assert_eq!(Style::DOTS.palette, Palette::default());
     }
 
     #[test]
@@ -526,7 +514,7 @@ mod tests {
             Err(Error::PatternProportions)
         ));
         for preset in [
-            PatternShape::BRAND_FINDER,
+            PatternShape::ROUNDED_INNER_FINDER,
             PatternShape::ROUNDED_FINDER,
             PatternShape::SQUARE_FINDER,
             PatternShape::ROUNDED_ALIGNMENT,
@@ -548,7 +536,7 @@ mod tests {
         assert!((ring.inner().rect().width() - 70.0 * 228.0 / 308.0).abs() < 1e-9);
         assert!((ring.outer().radius() - 70.0 * 60.0 / 308.0).abs() < 1e-9);
         assert!((stone.bounds().width() - 70.0 * 138.0 / 308.0).abs() < 1e-9);
-        let sharp = PatternShape::BRAND_FINDER;
+        let sharp = PatternShape::ROUNDED_INNER_FINDER;
         let [ring, _] = sharp.shapes_in(area).expect("shapes");
         let ring = as_ring(ring).expect("ring");
         assert!((ring.outer().radius() - 0.0).abs() < 1e-12);

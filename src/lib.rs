@@ -3,7 +3,7 @@
 //! ```
 //! use qrcoder::{Composer, EcLevel, Layout, Logo, ModuleSize, QuietZone, Symbol};
 //!
-//! let symbol = Symbol::encode(b"https://bipa.app", EcLevel::H)?;
+//! let symbol = Symbol::encode(b"https://example.com", EcLevel::H)?;
 //! let layout = Layout::new(ModuleSize::new(12)?, QuietZone::new(4)?);
 //! let logo = Logo::new(&image::RgbaImage::from_pixel(64, 64, image::Rgba([0, 0, 0, 255])))?;
 //! let scene = Composer::new(&symbol, layout).logo(&logo).compose()?;

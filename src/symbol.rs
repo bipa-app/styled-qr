@@ -604,7 +604,7 @@ mod tests {
     fn matches_reference_encoder_across_levels_and_sizes() {
         for ec in [EcLevel::L, EcLevel::M, EcLevel::Q, EcLevel::H] {
             for len in [0usize, 1, 17, 80, 300, 1000] {
-                let data: Vec<u8> = (0..len).map(|i| b"bipa-qr-0123456789"[i % 18]).collect();
+                let data: Vec<u8> = (0..len).map(|i| b"example-0123456789"[i % 18]).collect();
                 let Ok(symbol) = Symbol::encode(&data, ec) else {
                     assert!(
                         qrcode::QrCode::with_error_correction_level(&data, ec.to_qr()).is_err()
@@ -803,7 +803,7 @@ mod tests {
 
     #[test]
     fn explicit_masks_are_applied_and_reported() {
-        let data = b"https://bipa.app/mask";
+        let data = b"https://example.com/mask";
         let best = Symbol::encode(data, EcLevel::H).expect("encode");
         assert_eq!(
             Symbol::encode_masked(data, EcLevel::H, Version::MIN, best.mask()).expect("masked"),

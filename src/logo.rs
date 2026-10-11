@@ -53,7 +53,7 @@ pub enum LogoSize {
 }
 
 impl LogoSize {
-    pub const LEGACY: Self = Self::Area(Ratio::or_one(0.05));
+    pub const DEFAULT: Self = Self::Area(Ratio::or_one(0.05));
 
     fn side_px(self, symbol_px: f64, finder_px: f64) -> f64 {
         match self {
@@ -120,7 +120,7 @@ impl Logo {
         let image = Arc::new(RgbaImage::from_fn(w, h, |x, y| image.get_pixel(x, y)));
         Ok(Self {
             image,
-            size: LogoSize::LEGACY,
+            size: LogoSize::DEFAULT,
             padding: Padding::default(),
             clearance: Clearance::default(),
             error_budget: Self::DEFAULT_ERROR_BUDGET,
@@ -753,10 +753,10 @@ mod tests {
     }
 
     #[test]
-    fn legacy_size_matches_the_area_formula() {
+    fn default_size_matches_the_area_formula() {
         let symbol_px = 37.0 * 22.0;
         let finder_px = 7.0 * 22.0;
-        let side = LogoSize::LEGACY.side_px(symbol_px, finder_px);
+        let side = LogoSize::DEFAULT.side_px(symbol_px, finder_px);
         let expected = ((symbol_px * symbol_px - 3.0 * finder_px * finder_px) * 0.05).sqrt();
         assert!((side - expected).abs() < 1e-9);
     }

@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn hiding_everything_exceeds_the_budget() {
-        let symbol = Symbol::encode(b"https://bipa.app", EcLevel::H).expect("encode");
+        let symbol = Symbol::encode(b"https://example.com", EcLevel::H).expect("encode");
         let usage = BudgetUsage::of(&symbol, symbol.modules().map(|(p, _)| p));
         assert!(usage.fraction() > 1.0);
     }

@@ -568,11 +568,11 @@ mod tests {
         let styles = [
             Style {
                 finder: round_frame,
-                ..Style::BRAND
+                ..Style::DOTS
             },
             Style {
                 alignment: AlignmentStyle::Pattern(round_frame),
-                ..Style::BRAND
+                ..Style::DOTS
             },
         ];
         for style in styles {

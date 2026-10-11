@@ -75,7 +75,7 @@ fn compose(symbol: &Symbol, layout: Layout, style: Style, logo: Option<&Logo>) -
 }
 
 #[test]
-fn production_configurations_decode() {
+fn logo_layouts_decode() {
     let logos = [
         load(SampleLogo::Coin),
         load(SampleLogo::Tall),
@@ -86,16 +86,16 @@ fn production_configurations_decode() {
         let logo = Logo::new(logo)
             .expect("logo")
             .with_padding(Padding::new(padding).expect("padding"));
-        compose(&symbol, layout(px, quiet), Style::BRAND, Some(&logo)).to_image()
+        compose(&symbol, layout(px, quiet), Style::DOTS, Some(&logo)).to_image()
     };
     for len in [1usize, 20, 42, 120, 300, 441] {
         let data = payload(len);
         for logo in &logos {
-            let app = render(&data, logo, 22, 4, 1);
-            assert_eq!(decode(&app), vec![data.clone()], "app len {len}");
+            let large = render(&data, logo, 22, 4, 1);
+            assert_eq!(decode(&large), vec![data.clone()], "large len {len}");
         }
-        let site = render(&data, &logos[2], 11, 2, 2);
-        assert_eq!(decode(&site), vec![data.clone()], "site len {len}");
+        let small = render(&data, &logos[2], 11, 2, 2);
+        assert_eq!(decode(&small), vec![data.clone()], "small len {len}");
     }
 }
 
@@ -129,7 +129,7 @@ fn composer_rejects_invalid_configuration_instead_of_panicking() {
 #[test]
 fn reused_stamps_keep_the_whole_shape() {
     let symbol = Symbol::encode(b"stamp", EcLevel::H).expect("encode");
-    let mut scene = compose(&symbol, layout(10, 4), Style::BRAND, None);
+    let mut scene = compose(&symbol, layout(10, 4), Style::DOTS, None);
     let edge = f64::from(scene.size()) - 1.5;
     let disc =
         |x: f64| Shape::Disc(qrcoder::Disc::new(qrcoder::Point::new(x, 20.5), 4.0).expect("disc"));
@@ -144,7 +144,7 @@ fn reused_stamps_keep_the_whole_shape() {
 
 #[test]
 fn presets_decode_without_logo() {
-    for style in [Style::BRAND, Style::CLASSIC] {
+    for style in [Style::DOTS, Style::CLASSIC] {
         for len in [5usize, 80, 400] {
             let data = payload(len);
             let symbol = Symbol::encode(data.as_bytes(), EcLevel::M).expect("encode");
@@ -160,7 +160,7 @@ fn every_visible_module_reads_back_its_color() {
     let symbol = Symbol::encode(data.as_bytes(), EcLevel::H).expect("encode");
     let logo = Logo::new(&load(SampleLogo::Coin)).expect("logo");
     let layout = layout(12, 4);
-    let scene = compose(&symbol, layout, Style::BRAND, Some(&logo));
+    let scene = compose(&symbol, layout, Style::DOTS, Some(&logo));
     let image = scene.to_image();
     let logo_rect = scene.logo_rect().expect("logo rect");
     let mut checked = 0;
@@ -183,7 +183,7 @@ fn quiet_zone_is_pure_background() {
     let palette = Palette::new(Color::rgb(20, 30, 90), Color::rgb(250, 245, 230)).expect("palette");
     let style = Style {
         palette,
-        ..Style::BRAND
+        ..Style::DOTS
     };
     let image = compose(&symbol, layout(10, 3), style, None).to_image();
     let edge = 30;
@@ -202,7 +202,7 @@ fn transparent_background_keeps_alpha() {
     let symbol = Symbol::encode(b"alpha", EcLevel::H).expect("encode");
     let style = Style {
         palette: Palette::new(Color::BLACK, Color::TRANSPARENT).expect("palette"),
-        ..Style::BRAND
+        ..Style::DOTS
     };
     let image = compose(&symbol, layout(10, 4), style, None).to_image();
     assert_eq!(image.get_pixel(0, 0)[3], 0);
@@ -215,7 +215,7 @@ fn transparent_background_keeps_alpha() {
 fn finder_patterns_are_pixel_symmetric() {
     for px in [7u32, 10, 13, 22] {
         let symbol = Symbol::encode(b"symmetry", EcLevel::H).expect("encode");
-        let image = compose(&symbol, layout(px, 4), Style::BRAND, None).to_image();
+        let image = compose(&symbol, layout(px, 4), Style::DOTS, None).to_image();
         let side = 7 * px;
         let origin = 4 * px;
         for y in 0..side {
@@ -234,7 +234,7 @@ fn dots_carry_exact_ink() {
     let symbol = Symbol::encode(b"ink", EcLevel::H).expect("encode");
     let px = 21u32;
     let layout = layout(px, 4);
-    let image = compose(&symbol, layout, Style::BRAND, None).to_image();
+    let image = compose(&symbol, layout, Style::DOTS, None).to_image();
     let radius = f64::from(px) * 0.85 / 2.0;
     let expected = std::f64::consts::PI * radius * radius;
     let dots = symbol
@@ -256,8 +256,8 @@ fn dots_carry_exact_ink() {
 fn rendering_is_deterministic() {
     let logo = Logo::new(&load(SampleLogo::Coin)).expect("logo");
     let symbol = Symbol::encode(payload(90).as_bytes(), EcLevel::H).expect("encode");
-    let a = compose(&symbol, layout(9, 4), Style::BRAND, Some(&logo));
-    let b = compose(&symbol, layout(9, 4), Style::BRAND, Some(&logo));
+    let a = compose(&symbol, layout(9, 4), Style::DOTS, Some(&logo));
+    let b = compose(&symbol, layout(9, 4), Style::DOTS, Some(&logo));
     assert_eq!(a.to_image(), b.to_image());
     assert_eq!(a.to_svg().expect("svg"), b.to_svg().expect("svg"));
 }
@@ -305,7 +305,7 @@ fn footprint_clearance_hides_fewer_modules_than_bounds() {
     let logo = Logo::new(&load(SampleLogo::Sparse)).expect("logo");
     let count = |clearance| {
         let logo = logo.clone().with_clearance(clearance);
-        let scene = compose(&symbol, layout(10, 4), Style::BRAND, Some(&logo));
+        let scene = compose(&symbol, layout(10, 4), Style::DOTS, Some(&logo));
         scene.layers().iter().map(|l| l.shapes.len()).sum::<usize>()
     };
     assert!(count(Clearance::Footprint) > count(Clearance::Bounds));
@@ -343,14 +343,14 @@ fn alignment_marks_under_the_logo_are_dropped() {
     assert_eq!(symbol.version(), version);
     let logo = Logo::new(&load(SampleLogo::Coin)).expect("logo");
     let layout = layout(10, 4);
-    let with_logo = compose(&symbol, layout, Style::BRAND, Some(&logo));
-    let without = compose(&symbol, layout, Style::BRAND, None);
+    let with_logo = compose(&symbol, layout, Style::DOTS, Some(&logo));
+    let without = compose(&symbol, layout, Style::DOTS, None);
     let marks = |scene: &Scene| scene.layers().get(2).map_or(0, |l| l.shapes.len());
     assert_eq!(marks(&without), 2 * symbol.alignment_centers().len());
     assert_eq!(marks(&with_logo), marks(&without) - 2);
     let style = Style {
         alignment: AlignmentStyle::Modules,
-        ..Style::BRAND
+        ..Style::DOTS
     };
     assert_eq!(compose(&symbol, layout, style, None).layers().len(), 2);
 }
@@ -359,7 +359,7 @@ fn alignment_marks_under_the_logo_are_dropped() {
 fn svg_mirrors_the_scene() {
     let symbol = Symbol::encode(payload(60).as_bytes(), EcLevel::H).expect("encode");
     let logo = Logo::new(&load(SampleLogo::Coin)).expect("logo");
-    let scene = compose(&symbol, layout(10, 4), Style::BRAND, Some(&logo));
+    let scene = compose(&symbol, layout(10, 4), Style::DOTS, Some(&logo));
     let svg = scene.to_svg().expect("svg");
     let discs = scene
         .layers()
@@ -395,7 +395,7 @@ fn minimum_version_renders_a_larger_symbol() {
     let large =
         Symbol::encode_with(b"hi", EcLevel::H, Version::new(4).expect("v")).expect("encode");
     assert_eq!(large.width(), 33);
-    let image = compose(&large, layout(6, 4), Style::BRAND, None).to_image();
+    let image = compose(&large, layout(6, 4), Style::DOTS, None).to_image();
     assert_eq!(decode(&image), vec!["hi".to_owned()]);
     assert!(large.width() > small.width());
 }
@@ -429,7 +429,7 @@ fn layout_fits_the_requested_size() {
 #[test]
 fn png_export_round_trips() {
     let symbol = Symbol::encode(b"png", EcLevel::H).expect("encode");
-    let scene = compose(&symbol, layout(8, 4), Style::BRAND, None);
+    let scene = compose(&symbol, layout(8, 4), Style::DOTS, None);
     let png = scene.to_png().expect("png");
     let decoded = image::load_from_memory(&png).expect("decode").into_rgba8();
     assert_eq!(decoded, scene.to_image());
@@ -438,7 +438,7 @@ fn png_export_round_trips() {
 #[test]
 fn custom_layers_render_on_top() {
     let symbol = Symbol::encode(b"layers", EcLevel::H).expect("encode");
-    let mut scene = compose(&symbol, layout(10, 4), Style::BRAND, None);
+    let mut scene = compose(&symbol, layout(10, 4), Style::DOTS, None);
     let before = scene.layers().len();
     let badge = qrcoder::Rect::from_origin(qrcoder::Point::new(2.0, 2.0), 6.0, 6.0);
     scene.push_layer(qrcoder::Layer {
@@ -454,7 +454,7 @@ fn custom_layers_render_on_top() {
 #[test]
 fn smallest_supported_module_size_renders() {
     let symbol = Symbol::encode(b"min", EcLevel::H).expect("encode");
-    let min = Style::BRAND.module.min_module_px();
+    let min = Style::DOTS.module.min_module_px();
     let scene = Composer::new(&symbol, layout(min, 4))
         .compose()
         .expect("min size");
@@ -480,7 +480,7 @@ fn budget_counts_only_modules_that_read_wrong() {
             .expect("logo")
             .with_clearance(Clearance::Bounds)
             .with_padding(Padding::new(padding).expect("padding"));
-        let scene = compose(&symbol, grid, Style::BRAND, Some(&logo));
+        let scene = compose(&symbol, grid, Style::DOTS, Some(&logo));
         let rect = scene.logo_rect().expect("logo");
         let extent = f64::from(px) * 0.85 / 2.0;
         let clearance = (f64::from(padding) * f64::from(px)).max(extent);
@@ -508,14 +508,14 @@ fn budget_counts_only_modules_that_read_wrong() {
 }
 
 #[test]
-fn legacy_logo_size_follows_the_area_formula() {
+fn default_logo_size_follows_the_area_formula() {
     let symbol = Symbol::encode(payload(42).as_bytes(), EcLevel::H).expect("encode");
     let square = RgbaImage::from_pixel(300, 300, Rgba([0, 0, 0, 255]));
     let logo = Logo::new(&square)
         .expect("logo")
         .with_over_budget(OverBudget::Reject);
     for px in [10u32, 11, 22] {
-        let scene = compose(&symbol, layout(px, 4), Style::BRAND, Some(&logo));
+        let scene = compose(&symbol, layout(px, 4), Style::DOTS, Some(&logo));
         let m = f64::from(px);
         let symbol_px = f64::from(symbol.width()) * m;
         let finder_px = 7.0 * m;
@@ -531,7 +531,7 @@ fn svg_background_follows_alpha() {
     let svg_with = |light: Color| {
         let style = Style {
             palette: Palette::new(Color::BLACK, light).expect("palette"),
-            ..Style::BRAND
+            ..Style::DOTS
         };
         compose(&symbol, layout(10, 4), style, None)
             .to_svg()
@@ -559,7 +559,7 @@ fn logo_pixels_land_exactly_on_the_canvas() {
     let logo = Logo::new(&marker)
         .expect("logo")
         .with_size(LogoSize::Width(Ratio::new(0.15).expect("ratio")));
-    let scene = compose(&symbol, layout(10, 4), Style::BRAND, Some(&logo));
+    let scene = compose(&symbol, layout(10, 4), Style::DOTS, Some(&logo));
     let rect = scene.logo_rect().expect("logo");
     let image = scene.to_image();
     let (x0, y0) = (pixel(rect.min().x), pixel(rect.min().y));
@@ -574,7 +574,7 @@ fn logo_pixels_land_exactly_on_the_canvas() {
 #[test]
 fn same_color_layers_meet_without_seams() {
     let symbol = Symbol::encode(b"seam", EcLevel::H).expect("encode");
-    let mut scene = compose(&symbol, layout(10, 4), Style::BRAND, None);
+    let mut scene = compose(&symbol, layout(10, 4), Style::DOTS, None);
     let left = qrcoder::Rect::from_corners(
         qrcoder::Point::new(2.0, 2.0),
         qrcoder::Point::new(7.5, 12.0),
@@ -660,7 +660,7 @@ fn logo_plate_keeps_the_code_readable() {
         let logo = Logo::new(&load(SampleLogo::Sparse))
             .expect("logo")
             .with_plate(plate);
-        let scene = compose(&symbol, layout(8, 4), Style::BRAND, Some(&logo));
+        let scene = compose(&symbol, layout(8, 4), Style::DOTS, Some(&logo));
         let rect = scene.logo_rect().expect("logo");
         let image = scene.to_image();
         let center = rect.center();
@@ -678,7 +678,7 @@ fn linear_blending_lightens_partial_edges_only() {
     let render = |blending| {
         let style = Style {
             blending,
-            ..Style::BRAND
+            ..Style::DOTS
         };
         let mut scene = compose(&symbol, layout(10, 4), style, None);
         assert_eq!(scene.blending(), blending);
@@ -699,7 +699,7 @@ fn linear_blending_lightens_partial_edges_only() {
     let svg = |blending| {
         let style = Style {
             blending,
-            ..Style::BRAND
+            ..Style::DOTS
         };
         compose(&symbol, layout(10, 4), style, None)
             .to_svg()
