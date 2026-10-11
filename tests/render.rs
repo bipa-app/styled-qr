@@ -1,5 +1,5 @@
 use image::{DynamicImage, GrayImage, Rgba, RgbaImage};
-use qrcoder::{
+use styled_qr::{
     AlignmentStyle, Clearance, Color, Composer, EcLevel, Error, Layout, Logo, LogoSize, ModuleSize,
     OverBudget, Padding, Palette, Pos, QuietZone, Ratio, Role, Scene, Shape, Style, Symbol,
     Version,
@@ -131,9 +131,10 @@ fn reused_stamps_keep_the_whole_shape() {
     let symbol = Symbol::encode(b"stamp", EcLevel::H).expect("encode");
     let mut scene = compose(&symbol, layout(10, 4), Style::DOTS, None);
     let edge = f64::from(scene.size()) - 1.5;
-    let disc =
-        |x: f64| Shape::Disc(qrcoder::Disc::new(qrcoder::Point::new(x, 20.5), 4.0).expect("disc"));
-    scene.push_layer(qrcoder::Layer {
+    let disc = |x: f64| {
+        Shape::Disc(styled_qr::Disc::new(styled_qr::Point::new(x, 20.5), 4.0).expect("disc"))
+    };
+    scene.push_layer(styled_qr::Layer {
         color: Color::BLACK,
         shapes: vec![disc(edge), disc(20.5)],
     });
@@ -422,7 +423,7 @@ fn layout_fits_the_requested_size() {
             .expect("fit")
             .module_size
             .px(),
-        qrcoder::MAX_MODULE_PX
+        styled_qr::MAX_MODULE_PX
     );
 }
 
@@ -440,8 +441,8 @@ fn custom_layers_render_on_top() {
     let symbol = Symbol::encode(b"layers", EcLevel::H).expect("encode");
     let mut scene = compose(&symbol, layout(10, 4), Style::DOTS, None);
     let before = scene.layers().len();
-    let badge = qrcoder::Rect::from_origin(qrcoder::Point::new(2.0, 2.0), 6.0, 6.0);
-    scene.push_layer(qrcoder::Layer {
+    let badge = styled_qr::Rect::from_origin(styled_qr::Point::new(2.0, 2.0), 6.0, 6.0);
+    scene.push_layer(styled_qr::Layer {
         color: Color::rgb(200, 0, 0),
         shapes: vec![Shape::Rect(badge)],
     });
@@ -501,7 +502,7 @@ fn budget_counts_only_modules_that_read_wrong() {
             })
             .count();
         assert_eq!(scene.layers().first().map(|l| l.shapes.len()), Some(dots));
-        let expected = qrcoder::BudgetUsage::of(&symbol, hidden_dark);
+        let expected = styled_qr::BudgetUsage::of(&symbol, hidden_dark);
         assert_eq!(scene.error_budget_usage(), expected, "padding {padding}");
         assert!(expected.worst_block() > 0);
     }
@@ -575,33 +576,33 @@ fn logo_pixels_land_exactly_on_the_canvas() {
 fn same_color_layers_meet_without_seams() {
     let symbol = Symbol::encode(b"seam", EcLevel::H).expect("encode");
     let mut scene = compose(&symbol, layout(10, 4), Style::DOTS, None);
-    let left = qrcoder::Rect::from_corners(
-        qrcoder::Point::new(2.0, 2.0),
-        qrcoder::Point::new(7.5, 12.0),
+    let left = styled_qr::Rect::from_corners(
+        styled_qr::Point::new(2.0, 2.0),
+        styled_qr::Point::new(7.5, 12.0),
     );
-    let right = qrcoder::Rect::from_corners(
-        qrcoder::Point::new(7.5, 2.0),
-        qrcoder::Point::new(13.0, 12.0),
+    let right = styled_qr::Rect::from_corners(
+        styled_qr::Point::new(7.5, 2.0),
+        styled_qr::Point::new(13.0, 12.0),
     );
     for rect in [left, right] {
-        scene.push_layer(qrcoder::Layer {
+        scene.push_layer(styled_qr::Layer {
             color: Color::rgb(0, 0, 0),
             shapes: vec![Shape::Rect(rect)],
         });
     }
-    let red = qrcoder::Rect::from_corners(
-        qrcoder::Point::new(2.0, 14.0),
-        qrcoder::Point::new(7.5, 18.0),
+    let red = styled_qr::Rect::from_corners(
+        styled_qr::Point::new(2.0, 14.0),
+        styled_qr::Point::new(7.5, 18.0),
     );
-    let blue = qrcoder::Rect::from_corners(
-        qrcoder::Point::new(7.5, 14.0),
-        qrcoder::Point::new(13.0, 18.0),
+    let blue = styled_qr::Rect::from_corners(
+        styled_qr::Point::new(7.5, 14.0),
+        styled_qr::Point::new(13.0, 18.0),
     );
-    scene.push_layer(qrcoder::Layer {
+    scene.push_layer(styled_qr::Layer {
         color: Color::rgb(255, 0, 0),
         shapes: vec![Shape::Rect(red)],
     });
-    scene.push_layer(qrcoder::Layer {
+    scene.push_layer(styled_qr::Layer {
         color: Color::rgb(0, 0, 255),
         shapes: vec![Shape::Rect(blue)],
     });
@@ -649,10 +650,10 @@ fn connected_style_decodes_and_joins_neighbors() {
 
 #[test]
 fn logo_plate_keeps_the_code_readable() {
-    let plate = qrcoder::Plate {
+    let plate = styled_qr::Plate {
         color: Color::WHITE,
         margin: Ratio::new(0.12).expect("margin"),
-        roundness: qrcoder::Roundness::new(0.4).expect("roundness"),
+        roundness: styled_qr::Roundness::new(0.4).expect("roundness"),
     };
     for len in [20usize, 150] {
         let data = payload(len);
@@ -673,8 +674,10 @@ fn logo_plate_keeps_the_code_readable() {
 #[test]
 fn linear_blending_lightens_partial_edges_only() {
     let symbol = Symbol::encode(b"gamma", EcLevel::H).expect("encode");
-    let edge =
-        qrcoder::Rect::from_corners(qrcoder::Point::new(2.0, 2.0), qrcoder::Point::new(4.5, 6.0));
+    let edge = styled_qr::Rect::from_corners(
+        styled_qr::Point::new(2.0, 2.0),
+        styled_qr::Point::new(4.5, 6.0),
+    );
     let render = |blending| {
         let style = Style {
             blending,
@@ -682,14 +685,14 @@ fn linear_blending_lightens_partial_edges_only() {
         };
         let mut scene = compose(&symbol, layout(10, 4), style, None);
         assert_eq!(scene.blending(), blending);
-        scene.push_layer(qrcoder::Layer {
+        scene.push_layer(styled_qr::Layer {
             color: Color::BLACK,
             shapes: vec![Shape::Rect(edge)],
         });
         scene.to_image()
     };
-    let srgb = render(qrcoder::Blending::Srgb);
-    let linear = render(qrcoder::Blending::Linear);
+    let srgb = render(styled_qr::Blending::Srgb);
+    let linear = render(styled_qr::Blending::Linear);
     assert_eq!(*srgb.get_pixel(3, 3), Rgba([0, 0, 0, 255]));
     assert_eq!(*linear.get_pixel(3, 3), Rgba([0, 0, 0, 255]));
     assert_eq!(*srgb.get_pixel(4, 3), Rgba([128, 128, 128, 255]));
@@ -705,6 +708,6 @@ fn linear_blending_lightens_partial_edges_only() {
             .to_svg()
             .expect("svg")
     };
-    assert!(svg(qrcoder::Blending::Linear).contains(r#"color-interpolation="linearRGB""#));
-    assert!(!svg(qrcoder::Blending::Srgb).contains("color-interpolation"));
+    assert!(svg(styled_qr::Blending::Linear).contains(r#"color-interpolation="linearRGB""#));
+    assert!(!svg(styled_qr::Blending::Srgb).contains("color-interpolation"));
 }

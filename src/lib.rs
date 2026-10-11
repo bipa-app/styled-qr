@@ -1,7 +1,7 @@
 //! Styled QR code rendering with exact anti-aliasing.
 //!
 //! ```
-//! use qrcoder::{Composer, EcLevel, Layout, Logo, ModuleSize, QuietZone, Symbol};
+//! use styled_qr::{Composer, EcLevel, Layout, Logo, ModuleSize, QuietZone, Symbol};
 //!
 //! let symbol = Symbol::encode(b"https://example.com", EcLevel::H)?;
 //! let layout = Layout::new(ModuleSize::new(12)?, QuietZone::new(4)?);
@@ -11,7 +11,7 @@
 //! let svg = scene.to_svg()?;
 //! assert_eq!(png.width(), (u32::from(symbol.width()) + 8) * 12);
 //! assert!(svg.starts_with("<svg"));
-//! # Ok::<(), qrcoder::Error>(())
+//! # Ok::<(), styled_qr::Error>(())
 //! ```
 
 mod budget;
