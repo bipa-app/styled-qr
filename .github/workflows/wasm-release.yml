@@ -1,0 +1,35 @@
+name: wasm-release
+
+# Pushing a wasm-v<version> tag builds @bipa-app/styled-qr and attaches its tarball to a GitHub
+# release. Consumers depend on the tarball's URL; npm pins it by integrity in their lockfile.
+on:
+  push:
+    tags: ["wasm-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.repository == 'bipa-app/styled-qr'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen-cli@0.2.100
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: wasm/build.sh
+      - run: node --test wasm/tests/*.test.mjs
+      - name: The tag matches the package version
+        run: test "wasm-v$(node -p 'require("./wasm/package.json").version')" = "$GITHUB_REF_NAME"
+      - run: npm pack
+        working-directory: wasm/pkg
+      - run: gh release create "$GITHUB_REF_NAME" wasm/pkg/bipa-app-styled-qr-*.tgz --title "$GITHUB_REF_NAME" --notes "@bipa-app/styled-qr $GITHUB_REF_NAME. Install with the tarball URL below."
+        env:
+          GH_TOKEN: ${{ github.token }}
