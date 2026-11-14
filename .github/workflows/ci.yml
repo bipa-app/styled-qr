@@ -36,3 +36,22 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.88
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --locked --release
+
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen-cli@0.2.100
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: wasm/build.sh
+      - run: node --test wasm/tests/*.test.mjs
+      - run: npm pack --dry-run
+        working-directory: wasm/pkg

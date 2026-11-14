@@ -1,0 +1,16 @@
+{
+    "name": "@bipa-app/styled-qr",
+    "version": "0.1.0",
+    "description": "Styled QR codes with logos, as SVG and PNG, from the styled-qr Rust crate built to WebAssembly",
+    "license": "MIT",
+    "repository": { "type": "git", "url": "git+https://github.com/bipa-app/styled-qr.git", "directory": "wasm" },
+    "type": "module",
+    "main": "./styled_qr_wasm.js",
+    "types": "./styled_qr_wasm.d.ts",
+    "exports": {
+        ".": { "types": "./styled_qr_wasm.d.ts", "default": "./styled_qr_wasm.js" },
+        "./styled_qr_wasm_bg.wasm": "./styled_qr_wasm_bg.wasm"
+    },
+    "files": ["styled_qr_wasm.js", "styled_qr_wasm.d.ts", "styled_qr_wasm_bg.wasm", "styled_qr_wasm_bg.wasm.d.ts", "options.d.ts", "README.md"],
+    "sideEffects": false
+}

@@ -40,6 +40,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 border in modules. `Layout::fit` picks the largest module size that fits a
 pixel budget.
 
+## JavaScript
+
+The [`wasm`](wasm) directory builds the crate to WebAssembly as the npm package
+`@bipa-app/styled-qr`, for the browser and Node: `render(data, options, logoPng)`
+returns the SVG, and the PNG when asked, or throws `{ code, message }` when the
+choices can't make a readable code. See [`wasm/README.md`](wasm/README.md).
+
 ## Gallery
 
 Each example continues the one above, with the same `symbol` and `layout`.
