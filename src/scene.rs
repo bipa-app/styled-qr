@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
-use std::io::Cursor;
 
-use image::{DynamicImage, ImageFormat, RgbaImage};
+use image::RgbaImage;
 
 use crate::budget::BudgetUsage;
 use crate::error::Error;
@@ -140,9 +139,7 @@ impl Scene {
     }
 
     pub fn to_png(&self) -> Result<Vec<u8>, Error> {
-        let mut png = Cursor::new(Vec::new());
-        DynamicImage::ImageRgba8(self.to_image()).write_to(&mut png, ImageFormat::Png)?;
-        Ok(png.into_inner())
+        raster::encode_png(&self.to_image())
     }
 }
 

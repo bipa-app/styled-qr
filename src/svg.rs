@@ -1,13 +1,12 @@
 use std::fmt::Write as _;
-use std::io::Cursor;
 
 use base64ct::{Base64, Encoding};
-use image::{DynamicImage, ImageFormat, RgbaImage};
+use image::RgbaImage;
 
 use crate::error::Error;
 use crate::geometry::{Rect, RoundedRect, Shape};
 use crate::logo::{PlacedLogo, unit};
-use crate::raster::quantize;
+use crate::raster::{encode_png, quantize};
 use crate::scene::Scene;
 use crate::style::{Blending, Color};
 
@@ -57,13 +56,12 @@ pub(crate) fn render(scene: &Scene, logo_href: Option<&str>) -> Result<String, E
 fn embed(out: &mut String, logo: &PlacedLogo) -> Result<(), Error> {
     let (w, h) = logo.image().dimensions();
     let rgba = RgbaImage::from_fn(w, h, |x, y| quantize(unit(*logo.image().get_pixel(x, y))));
-    let mut png = Cursor::new(Vec::new());
-    DynamicImage::ImageRgba8(rgba).write_to(&mut png, ImageFormat::Png)?;
+    let png = encode_png(&rgba)?;
     let (x, y) = logo.origin();
     let _ = write!(
         out,
         r#"<image x="{x}" y="{y}" width="{w}" height="{h}" xlink:href="data:image/png;base64,{}"/>"#,
-        Base64::encode_string(&png.into_inner())
+        Base64::encode_string(&png)
     );
     Ok(())
 }
