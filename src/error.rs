@@ -24,6 +24,8 @@ pub enum Error {
     PatternProportions,
     #[error("canvas of {px}px exceeds the {max}px limit")]
     CanvasTooLarge { px: u64, max: u32 },
+    #[error("a {width}x{height}px canvas cannot hold the {min}px code")]
+    CanvasTooSmall { width: u32, height: u32, min: u32 },
     #[error("module size {px}px is below the {min}px minimum for this module shape")]
     ModuleTooSmall { px: u32, min: u32 },
     #[error("contrast ratio {ratio:.2} between dark and light colors is below {min:.2}")]
