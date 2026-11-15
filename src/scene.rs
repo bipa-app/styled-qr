@@ -457,6 +457,7 @@ const fn shrinking_helps(error: &Error) -> bool {
         | Error::Roundness(_)
         | Error::PatternProportions
         | Error::CanvasTooLarge { .. }
+        | Error::CanvasTooSmall { .. }
         | Error::ModuleTooSmall { .. }
         | Error::InsufficientContrast { .. }
         | Error::EmptyLogo
