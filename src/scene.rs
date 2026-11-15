@@ -141,6 +141,40 @@ impl Scene {
     pub fn to_png(&self) -> Result<Vec<u8>, Error> {
         raster::encode_png(&self.to_image())
     }
+
+    /// The code centered on a `width` × `height` canvas of `color`, such as a 1200 × 630 link
+    /// preview whose square crop still holds the whole code.
+    pub fn to_image_on(&self, width: u32, height: u32, color: Color) -> Result<RgbaImage, Error> {
+        if width.max(height) > MAX_CANVAS_PX {
+            return Err(Error::CanvasTooLarge {
+                px: u64::from(width.max(height)),
+                max: MAX_CANVAS_PX,
+            });
+        }
+        if width < self.size || height < self.size {
+            return Err(Error::CanvasTooSmall {
+                width,
+                height,
+                min: self.size,
+            });
+        }
+        let mut canvas = RgbaImage::from_pixel(
+            width,
+            height,
+            image::Rgba([color.r, color.g, color.b, color.a]),
+        );
+        image::imageops::overlay(
+            &mut canvas,
+            &self.to_image(),
+            i64::from((width - self.size) / 2),
+            i64::from((height - self.size) / 2),
+        );
+        Ok(canvas)
+    }
+
+    pub fn to_png_on(&self, width: u32, height: u32, color: Color) -> Result<Vec<u8>, Error> {
+        raster::encode_png(&self.to_image_on(width, height, color)?)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -423,6 +457,7 @@ const fn shrinking_helps(error: &Error) -> bool {
         | Error::Roundness(_)
         | Error::PatternProportions
         | Error::CanvasTooLarge { .. }
+        | Error::CanvasTooSmall { .. }
         | Error::ModuleTooSmall { .. }
         | Error::InsufficientContrast { .. }
         | Error::EmptyLogo

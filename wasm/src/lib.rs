@@ -89,6 +89,17 @@ pub struct Options {
     /// Also return the PNG; the SVG always comes.
     #[serde(default)]
     pub png: bool,
+    /// Center the PNG's code on a larger canvas; the SVG stays the code alone.
+    pub canvas: Option<CanvasOptions>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CanvasOptions {
+    pub width: u32,
+    pub height: u32,
+    /// `#rrggbb`; the code's light color when absent.
+    pub color: Option<String>,
 }
 
 const fn default_module_px() -> u32 {
@@ -240,10 +251,16 @@ pub fn draw(data: &str, options: &Options, logo_png: Option<&[u8]>) -> Result<Dr
             Some(href) => scene.to_svg_linking_logo(href)?,
             None => scene.to_svg()?,
         },
-        png: if options.png {
-            Some(scene.to_png()?)
-        } else {
-            None
+        png: match (options.png, &options.canvas) {
+            (false, _) => None,
+            (true, None) => Some(scene.to_png()?),
+            (true, Some(canvas)) => {
+                let color = match &canvas.color {
+                    Some(hex) => color(hex)?,
+                    None => scene.background(),
+                };
+                Some(scene.to_png_on(canvas.width, canvas.height, color)?)
+            }
         },
     })
 }
@@ -289,6 +306,7 @@ fn defaults() -> Options {
         colors: None,
         logo: None,
         png: false,
+        canvas: None,
     }
 }
 
@@ -438,5 +456,56 @@ mod tests {
         assert_eq!(linked.png, embedded.png);
         let bare = draw("https://bipa.app", &plated(Some("/qr/logo.png")), None).expect("draws");
         assert!(!bare.svg.contains("<image"));
+    }
+
+    #[test]
+    fn a_canvas_centers_the_png_and_leaves_the_svg_alone() {
+        let alone = draw(
+            "https://bipa.app",
+            &Options {
+                png: true,
+                ..options()
+            },
+            None,
+        )
+        .expect("draws");
+        let wide = Options {
+            png: true,
+            canvas: Some(CanvasOptions {
+                width: 1200,
+                height: 630,
+                color: Some("#f4f4f5".to_owned()),
+            }),
+            ..options()
+        };
+        let drawn = draw("https://bipa.app", &wide, None).expect("draws");
+        assert_eq!(drawn.svg, alone.svg);
+        let image = image::load_from_memory(&drawn.png.expect("png"))
+            .expect("decode")
+            .into_rgba8();
+        assert_eq!(image.dimensions(), (1200, 630));
+        assert_eq!(image.get_pixel(0, 0).0, [0xf4, 0xf4, 0xf5, 255]);
+        let code = image::load_from_memory(&alone.png.expect("png"))
+            .expect("decode")
+            .into_rgba8();
+        let (x, y) = ((1200 - code.width()) / 2, (630 - code.height()) / 2);
+        assert_eq!(
+            image::imageops::crop_imm(&image, x, y, code.width(), code.height()).to_image(),
+            code
+        );
+        let tiny = Options {
+            canvas: Some(CanvasOptions {
+                width: 100,
+                height: 100,
+                color: None,
+            }),
+            ..wide
+        };
+        assert_eq!(
+            draw("https://bipa.app", &tiny, None)
+                .expect_err("refused")
+                .code,
+            "options"
+        );
     }
 }
