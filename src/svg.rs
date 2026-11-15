@@ -1,17 +1,16 @@
 use std::fmt::Write as _;
-use std::io::Cursor;
 
 use base64ct::{Base64, Encoding};
-use image::{DynamicImage, ImageFormat, RgbaImage};
+use image::RgbaImage;
 
 use crate::error::Error;
 use crate::geometry::{Rect, RoundedRect, Shape};
-use crate::logo::unit;
-use crate::raster::quantize;
+use crate::logo::{PlacedLogo, unit};
+use crate::raster::{encode_png, quantize};
 use crate::scene::Scene;
 use crate::style::{Blending, Color};
 
-pub(crate) fn render(scene: &Scene) -> Result<String, Error> {
+pub(crate) fn render(scene: &Scene, logo_href: Option<&str>) -> Result<String, Error> {
     let size = scene.size();
     let interpolation = match scene.blending() {
         Blending::Srgb => "",
@@ -31,20 +30,55 @@ pub(crate) fn render(scene: &Scene) -> Result<String, Error> {
     for layer in scene.layers().iter().filter(|l| !l.shapes.is_empty()) {
         out.push_str(&group(&layer.shapes, layer.color));
     }
-    if let Some(logo) = scene.logo() {
-        let (w, h) = logo.image().dimensions();
-        let rgba = RgbaImage::from_fn(w, h, |x, y| quantize(unit(*logo.image().get_pixel(x, y))));
-        let mut png = Cursor::new(Vec::new());
-        DynamicImage::ImageRgba8(rgba).write_to(&mut png, ImageFormat::Png)?;
-        let (x, y) = logo.origin();
-        let _ = write!(
-            out,
-            r#"<image x="{x}" y="{y}" width="{w}" height="{h}" xlink:href="data:image/png;base64,{}"/>"#,
-            Base64::encode_string(&png.into_inner())
-        );
+    match (scene.logo(), logo_href) {
+        (Some(logo), Some(href)) => {
+            if let Some((plate, color)) = logo.plate() {
+                out.push_str(&group(&[plate], color));
+            }
+            let mark = logo.mark_rect();
+            let _ = write!(
+                out,
+                r#"<image x="{}" y="{}" width="{}" height="{}" xlink:href="{}"/>"#,
+                num(mark.min().x),
+                num(mark.min().y),
+                num(mark.width()),
+                num(mark.height()),
+                escape(href)
+            );
+        }
+        (Some(logo), None) => embed(&mut out, logo)?,
+        (None, _) => {}
     }
     out.push_str("</svg>");
     Ok(out)
+}
+
+fn embed(out: &mut String, logo: &PlacedLogo) -> Result<(), Error> {
+    let (w, h) = logo.image().dimensions();
+    let rgba = RgbaImage::from_fn(w, h, |x, y| quantize(unit(*logo.image().get_pixel(x, y))));
+    let png = encode_png(&rgba)?;
+    let (x, y) = logo.origin();
+    let _ = write!(
+        out,
+        r#"<image x="{x}" y="{y}" width="{w}" height="{h}" xlink:href="data:image/png;base64,{}"/>"#,
+        Base64::encode_string(&png)
+    );
+    Ok(())
+}
+
+fn escape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 fn fill(color: Color) -> String {
@@ -214,6 +248,14 @@ mod tests {
                 r##"<path fill="none" stroke="#000000" stroke-opacity="0.2" stroke-width="2" stroke-linecap="round" d="M5 1h0M7.5 1h0"/>"##,
                 r##"<path fill="none" stroke="#000000" stroke-opacity="0.2" stroke-width="1" stroke-linecap="round" d="M9 1h0"/></g>"##,
             )
+        );
+    }
+
+    #[test]
+    fn a_linked_href_is_escaped() {
+        assert_eq!(
+            escape(r#"/a?b=1&c="d"<'e'>"#),
+            "/a?b=1&amp;c=&quot;d&quot;&lt;&apos;e&apos;&gt;"
         );
     }
 

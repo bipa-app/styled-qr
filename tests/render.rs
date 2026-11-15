@@ -437,8 +437,15 @@ fn png_export_round_trips() {
     let symbol = Symbol::encode(b"png", EcLevel::H).expect("encode");
     let scene = compose(&symbol, layout(8, 4), Style::DOTS, None);
     let png = scene.to_png().expect("png");
-    let decoded = image::load_from_memory(&png).expect("decode").into_rgba8();
-    assert_eq!(decoded, scene.to_image());
+    let decoded = image::load_from_memory(&png).expect("decode");
+    assert_eq!(decoded.color(), image::ColorType::L8);
+    assert_eq!(decoded.into_rgba8(), scene.to_image());
+
+    let logo = Logo::new(&load(SampleLogo::Coin)).expect("logo");
+    let colored = compose(&symbol, layout(8, 4), Style::DOTS, Some(&logo));
+    let decoded = image::load_from_memory(&colored.to_png().expect("png")).expect("decode");
+    assert_eq!(decoded.color(), image::ColorType::Rgb8);
+    assert_eq!(decoded.into_rgba8(), colored.to_image());
 }
 
 #[test]

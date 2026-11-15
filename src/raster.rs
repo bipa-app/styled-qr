@@ -1,4 +1,7 @@
-use image::{ImageBuffer, Luma, Rgba, RgbaImage};
+use image::codecs::png::{CompressionType, FilterType as PngFilter, PngEncoder};
+use image::{ExtendedColorType, ImageBuffer, ImageEncoder, Luma, Rgba, RgbaImage};
+
+use crate::error::Error;
 
 use crate::geometry::Shape;
 use crate::logo::{PremultipliedImage, unit};
@@ -203,6 +206,34 @@ fn quantize_in(Rgba([r, g, b, a]): Rgba<f64>, blending: Blending) -> Rgba<u8> {
     }
     let color = |v: f64| channel(blending.encode((v / a).clamp(0.0, 1.0)));
     Rgba([color(r), color(g), color(b), channel(a)])
+}
+
+/// PNG bytes for `image`, lossless and as small as the encoder makes them: the alpha channel goes
+/// when every pixel is opaque, and the color channels when every pixel is gray.
+pub(crate) fn encode_png(image: &RgbaImage) -> Result<Vec<u8>, Error> {
+    let (width, height) = image.dimensions();
+    let opaque = image.pixels().all(|p| p.0[3] == u8::MAX);
+    let gray = opaque && image.pixels().all(|p| p.0[0] == p.0[1] && p.0[1] == p.0[2]);
+    let (bytes, color): (Vec<u8>, ExtendedColorType) = if gray {
+        (
+            image.pixels().map(|p| p.0[0]).collect(),
+            ExtendedColorType::L8,
+        )
+    } else if opaque {
+        (
+            image
+                .pixels()
+                .flat_map(|p| [p.0[0], p.0[1], p.0[2]])
+                .collect(),
+            ExtendedColorType::Rgb8,
+        )
+    } else {
+        (image.as_raw().clone(), ExtendedColorType::Rgba8)
+    };
+    let mut png = Vec::new();
+    PngEncoder::new_with_quality(&mut png, CompressionType::Best, PngFilter::Adaptive)
+        .write_image(&bytes, width, height, color)?;
+    Ok(png)
 }
 
 #[cfg(test)]

@@ -231,6 +231,7 @@ impl Logo {
                 canvas_px.saturating_sub(height) / 2,
             ),
             rendition,
+            plate: self.plate.map(|plate| (plate, margin)),
         })
     }
 
@@ -335,9 +336,33 @@ impl Rendition {
 pub(crate) struct PlacedLogo {
     origin: (u32, u32),
     rendition: Arc<Rendition>,
+    plate: Option<(Plate, u32)>,
 }
 
 impl PlacedLogo {
+    /// The plate behind the logo, as a shape in canvas pixels, with its color.
+    pub(crate) fn plate(&self) -> Option<(Shape, Color)> {
+        self.plate.map(|(plate, _)| {
+            let rect = self.rect();
+            let radius = plate.roundness.radius_for(rect.width().min(rect.height()));
+            (
+                Shape::RoundedRect(RoundedRect::new(rect, radius)),
+                plate.color,
+            )
+        })
+    }
+
+    /// Where the logo itself sits, inside its plate's margin.
+    pub(crate) fn mark_rect(&self) -> Rect {
+        let margin = f64::from(self.plate.map_or(0, |(_, margin)| margin));
+        let rect = self.rect();
+        Rect::from_origin(
+            Point::new(rect.min().x + margin, rect.min().y + margin),
+            rect.width() - 2.0 * margin,
+            rect.height() - 2.0 * margin,
+        )
+    }
+
     pub(crate) const fn origin(&self) -> (u32, u32) {
         self.origin
     }

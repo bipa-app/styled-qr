@@ -26,3 +26,12 @@ test("contrast is the WCAG ratio, and the minimum is 3", () => {
     assert.equal(contrast("#000000", "#ffffff"), 21);
     assert.equal(minContrast(), 3);
 });
+
+test("a logo linked by href leaves the SVG lighter and the PNG unchanged", async () => {
+    const logo = new Uint8Array(await readFile(new URL("../../assets/mark.png", import.meta.url)));
+    const linked = render("https://bipa.app", { logo: { href: "/qr/logo.png" }, png: true }, logo);
+    const embedded = render("https://bipa.app", { png: true }, logo);
+    assert.match(linked.svg, /xlink:href="\/qr\/logo\.png"/);
+    assert.ok(linked.svg.length < embedded.svg.length);
+    assert.deepEqual(linked.png, embedded.png);
+});
