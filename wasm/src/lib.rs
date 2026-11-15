@@ -460,8 +460,15 @@ mod tests {
 
     #[test]
     fn a_canvas_centers_the_png_and_leaves_the_svg_alone() {
-        let alone = draw("https://bipa.app", &Options { png: true, ..options() }, None)
-            .expect("draws");
+        let alone = draw(
+            "https://bipa.app",
+            &Options {
+                png: true,
+                ..options()
+            },
+            None,
+        )
+        .expect("draws");
         let wide = Options {
             png: true,
             canvas: Some(CanvasOptions {
@@ -495,7 +502,9 @@ mod tests {
             ..wide
         };
         assert_eq!(
-            draw("https://bipa.app", &tiny, None).expect_err("refused").code,
+            draw("https://bipa.app", &tiny, None)
+                .expect_err("refused")
+                .code,
             "options"
         );
     }
