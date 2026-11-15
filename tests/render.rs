@@ -374,7 +374,11 @@ fn svg_mirrors_the_scene() {
         .flat_map(|l| &l.shapes)
         .filter(|s| matches!(s, Shape::Ring(_)))
         .count();
-    assert_eq!(svg.matches("<circle").count(), discs);
+    assert_eq!(svg.matches("<circle").count(), 0);
+    assert_eq!(
+        svg.matches("h0M").count() + svg.matches("h0\"").count(),
+        discs
+    );
     assert_eq!(svg.matches("fill-rule=\"evenodd\"").count(), rings);
     assert_eq!(svg.matches("<image").count(), 1);
     assert!(svg.contains(r#"xlink:href="data:image/png;base64,"#));
@@ -386,8 +390,9 @@ fn svg_mirrors_the_scene() {
     let classic = compose(&symbol, layout(10, 4), Style::CLASSIC, None)
         .to_svg()
         .expect("svg");
-    assert_eq!(classic.matches("<circle").count(), 0);
-    assert!(classic.matches("<rect").count() > 100);
+    assert_eq!(classic.matches("stroke").count(), 0);
+    assert!(classic.matches("<rect").count() <= 1);
+    assert!(classic.matches('Z').count() > 100);
 }
 
 #[test]

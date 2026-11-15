@@ -29,11 +29,7 @@ pub(crate) fn render(scene: &Scene) -> Result<String, Error> {
         );
     }
     for layer in scene.layers().iter().filter(|l| !l.shapes.is_empty()) {
-        let _ = write!(out, "<g{}>", fill(layer.color));
-        for shape in &layer.shapes {
-            out.push_str(&element(shape));
-        }
-        out.push_str("</g>");
+        out.push_str(&group(&layer.shapes, layer.color));
     }
     if let Some(logo) = scene.logo() {
         let (w, h) = logo.image().dimensions();
@@ -52,43 +48,68 @@ pub(crate) fn render(scene: &Scene) -> Result<String, Error> {
 }
 
 fn fill(color: Color) -> String {
+    paint("fill", color)
+}
+
+fn paint(property: &str, color: Color) -> String {
     let mut attrs = format!(
-        r##" fill="#{:02x}{:02x}{:02x}""##,
+        r##" {property}="#{:02x}{:02x}{:02x}""##,
         color.r, color.g, color.b
     );
     if color.a < u8::MAX {
         let _ = write!(
             attrs,
-            r#" fill-opacity="{}""#,
+            r#" {property}-opacity="{}""#,
             num(f64::from(color.a) / 255.0)
         );
     }
     attrs
 }
 
-fn element(shape: &Shape) -> String {
-    match *shape {
-        Shape::Rect(r) => format!(
-            r#"<rect x="{}" y="{}" width="{}" height="{}"/>"#,
-            num(r.min().x),
-            num(r.min().y),
-            num(r.width()),
-            num(r.height())
-        ),
-        Shape::Disc(d) => format!(
-            r#"<circle cx="{}" cy="{}" r="{}"/>"#,
-            num(d.center().x),
-            num(d.center().y),
-            num(d.radius())
-        ),
-        Shape::RoundedRect(r) => format!(r#"<path d="{}"/>"#, path(r)),
-        Shape::Ring(r) => format!(
-            r#"<path fill-rule="evenodd" d="{}{}"/>"#,
-            path(r.outer()),
-            path(r.inner())
-        ),
-        Shape::Tile(t) => format!(r#"<path d="{}"/>"#, outline(t.rect(), t.radii())),
+/// One layer in as few elements as it can take: its solid shapes as one path (all wound
+/// clockwise, so overlaps stay filled), its rings each with their own even-odd rule, and its
+/// dots of one radius as zero-length round-capped strokes.
+fn group(shapes: &[Shape], color: Color) -> String {
+    let mut solid = String::new();
+    let mut rings = String::new();
+    let mut dots: Vec<(String, String)> = Vec::new();
+    for shape in shapes {
+        match *shape {
+            Shape::Rect(r) => solid.push_str(&outline(r, [0.0; 4])),
+            Shape::RoundedRect(r) => solid.push_str(&path(r)),
+            Shape::Tile(t) => solid.push_str(&outline(t.rect(), t.radii())),
+            Shape::Ring(r) => {
+                let _ = write!(
+                    rings,
+                    r#"<path fill-rule="evenodd" d="{}{}"/>"#,
+                    path(r.outer()),
+                    path(r.inner())
+                );
+            }
+            Shape::Disc(d) => {
+                let width = num(2.0 * d.radius());
+                let at = format!("M{} {}h0", num(d.center().x), num(d.center().y));
+                match dots.iter_mut().find(|(w, _)| *w == width) {
+                    Some((_, d)) => d.push_str(&at),
+                    None => dots.push((width, at)),
+                }
+            }
+        }
     }
+    let mut out = format!("<g{}>", fill(color));
+    if !solid.is_empty() {
+        let _ = write!(out, r#"<path d="{solid}"/>"#);
+    }
+    out.push_str(&rings);
+    for (width, d) in dots {
+        let _ = write!(
+            out,
+            r#"<path fill="none"{} stroke-width="{width}" stroke-linecap="round" d="{d}"/>"#,
+            paint("stroke", color)
+        );
+    }
+    out.push_str("</g>");
+    out
 }
 
 fn path(rr: RoundedRect) -> String {
@@ -143,7 +164,7 @@ fn num(v: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geometry::{Point, Rect};
+    use crate::geometry::{Disc, Point, Rect};
 
     #[test]
     fn numbers_are_compact() {
@@ -173,6 +194,26 @@ mod tests {
         assert_eq!(
             outline(rect, [0.0, 2.0, 0.0, 1.0]),
             "M0 0H8A2 2 0 0 1 10 2V6H1A1 1 0 0 1 0 5V0Z"
+        );
+    }
+
+    #[test]
+    fn a_layer_is_one_solid_path_its_rings_and_one_stroke_per_dot_size() {
+        let rect = |x: f64| Rect::from_corners(Point::new(x, 0.0), Point::new(x + 2.0, 2.0));
+        let shapes = [
+            Shape::Rect(rect(0.0)),
+            Shape::Rect(rect(2.0)),
+            Shape::Disc(Disc::new(Point::new(5.0, 1.0), 1.0).expect("disc")),
+            Shape::Disc(Disc::new(Point::new(7.5, 1.0), 1.0).expect("disc")),
+            Shape::Disc(Disc::new(Point::new(9.0, 1.0), 0.5).expect("disc")),
+        ];
+        assert_eq!(
+            group(&shapes, Color::rgba(0, 0, 0, 51)),
+            concat!(
+                r##"<g fill="#000000" fill-opacity="0.2"><path d="M0 0H2V2H0ZM2 0H4V2H2Z"/>"##,
+                r##"<path fill="none" stroke="#000000" stroke-opacity="0.2" stroke-width="2" stroke-linecap="round" d="M5 1h0M7.5 1h0"/>"##,
+                r##"<path fill="none" stroke="#000000" stroke-opacity="0.2" stroke-width="1" stroke-linecap="round" d="M9 1h0"/></g>"##,
+            )
         );
     }
 
