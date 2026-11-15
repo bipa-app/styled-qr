@@ -23,6 +23,10 @@ export type QrOptions = {
     };
     /** Also return the PNG. */
     png?: boolean;
+    /** Center the PNG's code on a larger canvas, e.g. a 1200 × 630 link preview; the SVG stays
+     *  the code alone. `color` is `#rrggbb`, the code's light color by default. A canvas smaller
+     *  than the code is refused as `options`. */
+    canvas?: { width: number; height: number; color?: string };
 };
 
 export type QrRefusal = {
