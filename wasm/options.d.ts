@@ -17,6 +17,9 @@ export type QrOptions = {
         /** Empty modules around the logo; 2 by default. */
         padding?: number;
         plate?: { color: string; margin: number; roundness: number };
+        /** Link the SVG's logo from this URL instead of embedding it, for a page that serves the
+         *  logo once. Only an SVG inline in HTML loads it; the PNG always embeds the logo. */
+        href?: string;
     };
     /** Also return the PNG. */
     png?: boolean;

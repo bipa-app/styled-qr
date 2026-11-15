@@ -62,6 +62,8 @@ pub struct LogoOptions {
     #[serde(default = "default_logo_padding")]
     pub padding: u32,
     pub plate: Option<PlateOptions>,
+    /// Link the SVG's logo from this URL instead of embedding it; the PNG still embeds it.
+    pub href: Option<String>,
 }
 
 const fn default_logo_padding() -> u32 {
@@ -192,6 +194,7 @@ fn logo(png: &[u8], options: Option<&LogoOptions>) -> Result<Logo, Refusal> {
         width: None,
         padding: default_logo_padding(),
         plate: None,
+        href: None,
     });
     if let Some(width) = options.width {
         logo = logo.with_size(LogoSize::Width(Ratio::new(width)?));
@@ -228,8 +231,15 @@ pub fn draw(data: &str, options: &Options, logo_png: Option<&[u8]>) -> Result<Dr
         Some(logo) => composer.logo(logo).compose()?,
         None => composer.compose()?,
     };
+    let href = logo
+        .as_ref()
+        .and(options.logo.as_ref())
+        .and_then(|logo| logo.href.as_deref());
     Ok(Drawn {
-        svg: scene.to_svg()?,
+        svg: match href {
+            Some(href) => scene.to_svg_linking_logo(href)?,
+            None => scene.to_svg()?,
+        },
         png: if options.png {
             Some(scene.to_png()?)
         } else {
@@ -378,6 +388,7 @@ mod tests {
                 width: Some(0.6),
                 padding: 2,
                 plate: None,
+                href: None,
             }),
             ..options()
         };
@@ -387,5 +398,37 @@ mod tests {
                 .code,
             "logoUnreadable"
         );
+    }
+
+    #[test]
+    fn a_linked_logo_leaves_the_svg_and_stays_in_the_png() {
+        let mut png = Vec::new();
+        image::RgbaImage::from_pixel(64, 64, image::Rgba([0, 0, 0, 255]))
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .expect("png");
+        let plated = |href: Option<&str>| Options {
+            logo: Some(LogoOptions {
+                width: None,
+                padding: 2,
+                plate: Some(PlateOptions {
+                    color: "#ffffff".to_owned(),
+                    margin: 0.1,
+                    roundness: 0.2,
+                }),
+                href: href.map(str::to_owned),
+            }),
+            png: true,
+            ..options()
+        };
+        let linked = draw("https://bipa.app", &plated(Some("/qr/logo.png?v=1&a=b")), Some(&png))
+            .expect("draws");
+        let embedded = draw("https://bipa.app", &plated(None), Some(&png)).expect("draws");
+        assert!(linked.svg.contains(r#"xlink:href="/qr/logo.png?v=1&amp;a=b""#));
+        assert!(!linked.svg.contains("base64"));
+        assert!(linked.svg.contains(r##"<g fill="#ffffff"><path d="##));
+        assert!(embedded.svg.contains("data:image/png;base64,"));
+        assert_eq!(linked.png, embedded.png);
+        let bare = draw("https://bipa.app", &plated(Some("/qr/logo.png")), None).expect("draws");
+        assert!(!bare.svg.contains("<image"));
     }
 }

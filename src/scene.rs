@@ -128,7 +128,15 @@ impl Scene {
     }
 
     pub fn to_svg(&self) -> Result<String, Error> {
-        svg::render(self)
+        svg::render(self, None)
+    }
+
+    /// The SVG with the logo linked from `href` instead of embedded, for a page that serves the
+    /// logo once: the plate, if any, is drawn, and the image at `href` fills the logo's place.
+    /// Only a document that loads external images shows it, such as an SVG inline in HTML; an
+    /// SVG in `<img>`, or one drawn to a canvas, leaves the place empty.
+    pub fn to_svg_linking_logo(&self, href: &str) -> Result<String, Error> {
+        svg::render(self, Some(href))
     }
 
     pub fn to_png(&self) -> Result<Vec<u8>, Error> {
