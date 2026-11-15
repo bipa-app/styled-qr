@@ -345,7 +345,10 @@ impl PlacedLogo {
         self.plate.map(|(plate, _)| {
             let rect = self.rect();
             let radius = plate.roundness.radius_for(rect.width().min(rect.height()));
-            (Shape::RoundedRect(RoundedRect::new(rect, radius)), plate.color)
+            (
+                Shape::RoundedRect(RoundedRect::new(rect, radius)),
+                plate.color,
+            )
         })
     }
 

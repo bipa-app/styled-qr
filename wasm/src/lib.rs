@@ -420,10 +420,18 @@ mod tests {
             png: true,
             ..options()
         };
-        let linked = draw("https://bipa.app", &plated(Some("/qr/logo.png?v=1&a=b")), Some(&png))
-            .expect("draws");
+        let linked = draw(
+            "https://bipa.app",
+            &plated(Some("/qr/logo.png?v=1&a=b")),
+            Some(&png),
+        )
+        .expect("draws");
         let embedded = draw("https://bipa.app", &plated(None), Some(&png)).expect("draws");
-        assert!(linked.svg.contains(r#"xlink:href="/qr/logo.png?v=1&amp;a=b""#));
+        assert!(
+            linked
+                .svg
+                .contains(r#"xlink:href="/qr/logo.png?v=1&amp;a=b""#)
+        );
         assert!(!linked.svg.contains("base64"));
         assert!(linked.svg.contains(r##"<g fill="#ffffff"><path d="##));
         assert!(embedded.svg.contains("data:image/png;base64,"));

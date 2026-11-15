@@ -255,7 +255,10 @@ mod tests {
 
     #[test]
     fn a_linked_href_is_escaped() {
-        assert_eq!(escape(r#"/a?b=1&c="d"<'e'>"#), "/a?b=1&amp;c=&quot;d&quot;&lt;&apos;e&apos;&gt;");
+        assert_eq!(
+            escape(r#"/a?b=1&c="d"<'e'>"#),
+            "/a?b=1&amp;c=&quot;d&quot;&lt;&apos;e&apos;&gt;"
+        );
     }
 
     #[test]
